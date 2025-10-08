@@ -6,25 +6,22 @@ SHELL := /usr/bin/env bash
 deps:
 	@bash scripts/check_deps.sh
 
-# Creates a local Python venv with pycryptodome so Keccak tests can pass.
+# Creates a local Python venv with ecdsa for secp256k1 helpers.
 venv:
 	@bash scripts/ensure_venv.sh
 
-# Runs the test suite. If system Python lacks Keccak, uses a local venv.
+# Runs the test suite. If system Python lacks optional deps, uses a local venv.
 check: deps
 	@set -euo pipefail; \
 	need_venv=0; \
-	if ! python3 scripts/has_keccak.py >/dev/null 2>&1; then \
-	  need_venv=1; \
-	fi; \
 	if ! python3 -c 'import ecdsa' >/dev/null 2>&1; then \
 	  need_venv=1; \
 	fi; \
 	if [[ $$need_venv -eq 0 ]]; then \
-	  echo "Using system Python crypto deps"; \
+	  echo "Using system Python primitives"; \
 	  bash tests/run.sh; \
 	else \
-	  echo "Using local venv (.venv) for python deps"; \
+	  echo "Using local venv (.venv) for Python helpers"; \
 	  if [[ ! -d .venv ]]; then $(MAKE) venv; fi; \
 	  PATH=.venv/bin:$$PATH bash tests/run.sh; \
 	fi

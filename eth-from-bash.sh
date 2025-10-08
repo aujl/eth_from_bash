@@ -93,7 +93,7 @@ PASSPHRASE="${*:-}"
 [[ "$(wc -l < "${WLIST}")" -eq 2048 ]] || { echo "wordlist must have 2048 lines" >&2; exit 1; }
 
 # check dependencies
-for cmd in xxd bc awk sha256sum openssl perl python3; do
+for cmd in xxd bc awk sha256sum openssl python3; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 
@@ -196,10 +196,9 @@ if [[ -n "${ENT_HEX_VALUE}" ]]; then
   CS_NIB_HEX="$(printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | sha256sum | cut -c1)"
   # sanitize CS_NIB_HEX
   CS_NIB_HEX_clean="$(echo "${CS_NIB_HEX}" | tr -cd '0-9A-Fa-f')"
-  CS_BITS="$(echo "obase=2; ibase=16; ${CS_NIB_HEX_clean^^}" | bc | awk '{printf "%04d
-", $0}')"
+  CS_BITS_BIN="$(echo "obase=2; ibase=16; ${CS_NIB_HEX_clean^^}" | bc)"
+  CS_BITS="$(printf "%04s" "${CS_BITS_BIN}" | tr ' ' 0)"
 fi
-
 if [[ -n "${ENT_HEX_VALUE}" ]]; then
   BIN_ENT="$(
     printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | \
@@ -379,44 +378,11 @@ if [[ "${NO_ADDRESS}" -eq 0 ]]; then
 fi
 
 eth_keccak256_hex(){
-  # Primary: Python (pycryptodome) Keccak-256; read from stdin
-  if command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-    if "${PYTHON_BIN}" -c '
-import sys
-try:
-    from Crypto.Hash import keccak
-except Exception:
-    sys.exit(1)
-data = sys.stdin.buffer.read()
-k = keccak.new(digest_bits=256)
-k.update(data)
-sys.stdout.write(k.hexdigest())
-' ; then
-      return
-    fi
+  if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    echo "ERROR: python interpreter '${PYTHON_BIN}' unavailable for Keccak" >&2
+    exit 1
   fi
-  if [[ "${PYTHON_BIN}" != "python3" ]] && command -v python3 >/dev/null 2>&1; then
-    if python3 -c '
-import sys
-try:
-    from Crypto.Hash import keccak
-except Exception:
-    sys.exit(1)
-data = sys.stdin.buffer.read()
-k = keccak.new(digest_bits=256)
-k.update(data)
-sys.stdout.write(k.hexdigest())
-' ; then
-      return
-    fi
-  fi
-  # Secondary: Perl Digest::Keccak if available
-  if perl -MDigest::Keccak=keccak_256_hex -e '1' 2>/dev/null; then
-    perl -MDigest::Keccak=keccak_256_hex -0777 -ne 'print keccak_256_hex($_)'
-    return
-  fi
-  echo "ERROR: Keccak-256 provider not found. Install python3-pycryptodome (apt) or pycryptodome (pip), or libdigest-keccak-perl." >&2
-  exit 1
+  "${PYTHON_BIN}" "${SCRIPT_DIR}/scripts/keccak_primitives.py" keccak256-hex
 }
 
 if [[ "${NO_ADDRESS}" -eq 0 ]]; then
