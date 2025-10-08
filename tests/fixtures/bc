@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+real_bin="${REAL_BC:-/usr/bin/bc}"
+mode="${ETH_FROM_BASH_TEST_BC_MODE:-}"
+
+if [[ "${mode}" != "child_invalid" ]]; then
+  exec "${real_bin}" "$@"
+fi
+
+input="$(cat)"
+if [[ -z "${input}" ]]; then
+  exec "${real_bin}" "$@"
+fi
+
+if [[ "${input}" == obase=16\;* ]]; then
+  flag="${ETH_FROM_BASH_TEST_BC_FLAG:-}"
+  if [[ -z "${flag}" || ! -e "${flag}" ]]; then
+    if [[ -n "${flag}" ]]; then
+      : > "${flag}"
+    fi
+    printf 'GGINVALID\n'
+    exit 0
+  fi
+fi
+
+printf '%s' "${input}" | "${real_bin}" "$@"

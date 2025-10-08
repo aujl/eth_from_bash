@@ -184,6 +184,42 @@ test_env_mnemonic_invalid(){
   fi
 }
 
+test_master_il_guard(){
+  local real_openssl
+  real_openssl="$(command -v openssl)"
+  local path_override="${ROOT_DIR}/tests/fixtures:${PATH}"
+  if OPENSSL_REAL="${real_openssl}" \
+    ETH_FROM_BASH_TEST_SCENARIO="master_il_zero" \
+    PATH="${path_override}" \
+    MNEMONIC="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+    bash "${SCRIPT}" -q --include-seed --no-address "${WLIST}" TREZOR >/dev/null 2>&1; then
+    fail "master IL zero guard"
+  else
+    pass "master IL zero guard"
+  fi
+}
+
+test_child_key_guard(){
+  local real_bc flag real_openssl path_override
+  real_bc="$(command -v bc)"
+  real_openssl="$(command -v openssl)"
+  flag="$(mktemp)"
+  path_override="${ROOT_DIR}/tests/fixtures:${PATH}"
+  if OPENSSL_REAL="${real_openssl}" \
+    REAL_BC="${real_bc}" \
+    ETH_FROM_BASH_TEST_BC_MODE="child_invalid" \
+    ETH_FROM_BASH_TEST_BC_FLAG="${flag}" \
+    PATH="${path_override}" \
+    MNEMONIC="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+    bash "${SCRIPT}" -q --include-seed --no-address "${WLIST}" TREZOR >/dev/null 2>&1; then
+    rm -f "${flag}"
+    fail "child key guard"
+  else
+    rm -f "${flag}"
+    pass "child key guard"
+  fi
+}
+
 test_seed_vector
 test_python_helper_pub
 test_mnemonic_checksum
@@ -193,5 +229,7 @@ test_env_entropy_override
 test_env_entropy_invalid
 test_env_mnemonic_override
 test_env_mnemonic_invalid
+test_master_il_guard
+test_child_key_guard
 
 echo "All done."
