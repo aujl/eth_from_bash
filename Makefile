@@ -4,6 +4,7 @@ SHELL := /usr/bin/env bash
 
 # Ensure required CLI tools exist
 deps:
+	@bash scripts/install_deps.sh
 	@bash scripts/check_deps.sh
 
 # Creates a local Python venv with pycryptodome so Keccak tests can pass.

@@ -82,7 +82,9 @@ test_mnemonic_checksum(){
   local cs_nib
   cs_nib=$(printf "%s" "${ent_hex}" | xxd -r -p | sha256sum | cut -c1)
   local cs_bin
-  cs_bin=$(echo "obase=2; ibase=16; ${cs_nib^^}" | bc | awk '{printf "%04d\n", $0}')
+  local cs_bin_raw
+  cs_bin_raw=$(echo "obase=2; ibase=16; ${cs_nib^^}" | bc)
+  cs_bin=$(printf "%04s" "${cs_bin_raw}" | tr ' ' 0)
   if [[ "${cs_bin}" == "${cs_bits}" ]]; then pass "BIP39 mnemonic checksum"; else
     echo "mnemonic: ${mn}"
     echo "ent_hex:  ${ent_hex}"

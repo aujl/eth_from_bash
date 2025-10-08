@@ -107,15 +107,31 @@ bn_add_mod_n(){
   # Important: set obase before ibase in bc. Otherwise obase=16 would be
   # interpreted in the new base (0x16 = 22), yielding spaced, non-hex output.
   local sum
-  sum="$(bc <<<"obase=16; ibase=16; ( ${a} + ${b} ) % ${N_HEX}")"
+  if ! sum="$(bc <<<"obase=16; ibase=16; ( ${a} + ${b} ) % ${N_HEX}")"; then
+    echo "Failed to run bc for modular addition" >&2
+    exit 1
+  fi
   sum="${sum^^}"
+  if [[ -z "${sum}" || ! "${sum}" =~ ^[0-9A-F]+$ ]]; then
+    echo "bc produced invalid output for modular addition" >&2
+    exit 1
+  fi
   printf "%064s" "${sum}" | tr ' ' 0
 }
 
 # Return 1 if a >= b (hex), else 0
 bn_ge(){
   local a="${1^^}" b="${2^^}"
-  bc <<<"obase=10; ibase=16; ${a} >= ${b}"
+  local out
+  if ! out="$(bc <<<"obase=10; ibase=16; ${a} >= ${b}")"; then
+    echo "Failed to run bc for comparison" >&2
+    exit 1
+  fi
+  if [[ ! "${out}" =~ ^[01]$ ]]; then
+    echo "bc produced invalid comparison output" >&2
+    exit 1
+  fi
+  printf "%s" "${out}"
 }
 
 bn_is_zero(){
@@ -196,8 +212,8 @@ if [[ -n "${ENT_HEX_VALUE}" ]]; then
   CS_NIB_HEX="$(printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | sha256sum | cut -c1)"
   # sanitize CS_NIB_HEX
   CS_NIB_HEX_clean="$(echo "${CS_NIB_HEX}" | tr -cd '0-9A-Fa-f')"
-  CS_BITS="$(echo "obase=2; ibase=16; ${CS_NIB_HEX_clean^^}" | bc | awk '{printf "%04d
-", $0}')"
+  CS_BITS_BIN="$(echo "obase=2; ibase=16; ${CS_NIB_HEX_clean^^}" | bc)"
+  CS_BITS="$(printf "%04s" "${CS_BITS_BIN}" | tr ' ' 0)"
 fi
 
 if [[ -n "${ENT_HEX_VALUE}" ]]; then
