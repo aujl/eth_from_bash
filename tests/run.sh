@@ -2,17 +2,14 @@
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "$0")" && pwd)"
-SCRIPTS=(
-  test_secp256k1_vectors.sh
-  test_cli_core.sh
-  test_env_controls.sh
-  test_keccak.sh
-)
+# shellcheck source=tests/load_secrets.sh
+source "${TEST_DIR}/load_secrets.sh"
 
-echo "==> Verifying secp256k1 primitive"
-python3 "${TEST_DIR}/../scripts/derive_seed_and_pub.py" selftest >/dev/null
-echo "-- secp256k1 primitive self-test passed"
-echo
+SCRIPTS=(
+  core_flow.sh
+  keccak_primitive.sh
+  secp256k1_primitive.sh
+)
 
 for script in "${SCRIPTS[@]}"; do
   echo "==> Running ${script}"

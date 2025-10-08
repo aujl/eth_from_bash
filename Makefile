@@ -12,7 +12,10 @@ venv:
 
 # Runs the test suite.
 check: deps
-	@bash tests/run.sh
+	@if [[ "$${UNSIGNED_TEST:-0}" == "1" ]]; then \
+		echo "*** Running in unsigned mode; signature checks disabled"; \
+	fi
+	@UNSIGNED_TEST=$${UNSIGNED_TEST:-0} SIGNED_TEST=$${SIGNED_TEST:-0} bash tests/run.sh
 
 clean-venv:
 	rm -rf .venv

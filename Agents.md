@@ -36,6 +36,8 @@ auditable, and reproducible, follow these conventions:
   `SIGNED_TEST=1 make check`. When `SIGNED_TEST=1` is set, the harness verifies
   outputs against signed fixtures stored in `tests/fixtures/`.
 - Required secrets:
+  - `CORE_FLOW_FIXTURE_HMAC_KEY_B64`: Base64-encoded binary key used to authenticate `tests/fixtures/core_flow_vectors.json`.
+  - `CORE_FLOW_FIXTURE_HMAC_B64`: Base64-encoded HMAC-SHA256 digest of the canonicalized core flow fixture.
   - `SIGNING_PUBKEY`: ASCII‑armored PGP public key for verification.
   - `SIGNING_CERT_SHA256`: Expected fingerprint used to guard against key
     substitution attacks.

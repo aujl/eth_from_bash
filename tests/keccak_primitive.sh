@@ -1,41 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/common.sh
-source "$(dirname "$0")/common.sh"
+source "${TESTS_DIR}/common.sh"
+# shellcheck source=tests/load_secrets.sh
+source "${TESTS_DIR}/load_secrets.sh"
 
 KECCAK_SCRIPT="${ROOT_DIR}/scripts/keccak_primitives.py"
 VECTORS_FILE="${ROOT_DIR}/tests/fixtures/keccak_vectors.json"
 REFERENCE_PUB="${ROOT_DIR}/tests/fixtures/keccak_reference_pub.pem"
 
-run_keccak_self_test(){
+run_keccak_self_test() {
   if "${PYTHON_BIN}" "${KECCAK_SCRIPT}" self-test >/dev/null; then
     pass "Keccak primitive internal self-test"
   else
-    fail "Keccak primitive internal self-test"
+    echo "FAIL: Keccak primitive internal self-test" >&2
+    exit 1
   fi
 }
 
-run_cli_digests(){
+run_cli_digests() {
   local empty abc
   empty=$(printf '' | "${PYTHON_BIN}" "${KECCAK_SCRIPT}" keccak256-hex)
   abc=$(printf 'abc' | "${PYTHON_BIN}" "${KECCAK_SCRIPT}" keccak256-hex)
   if [[ "${empty}" == "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" ]]; then
     pass "Keccak-256 hex digest (empty string)"
   else
-    echo "Got:      ${empty}"
-    echo "Expected: c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-    fail "Keccak-256 hex digest (empty string)"
+    echo "FAIL: Keccak-256 hex digest (empty string)" >&2
+    exit 1
   fi
   if [[ "${abc}" == "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45" ]]; then
     pass "Keccak-256 hex digest ('abc')"
   else
-    echo "Got:      ${abc}"
-    echo "Expected: 4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
-    fail "Keccak-256 hex digest ('abc')"
+    echo "FAIL: Keccak-256 hex digest ('abc')" >&2
+    exit 1
   fi
 }
 
-run_cli_eip55(){
+run_cli_eip55() {
   local out addr recomputed
   out=$(bash "${SCRIPT}" -q --mnemonic "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" "${WLIST}")
   addr=$(jq -r .address <<<"${out}")
@@ -43,13 +46,12 @@ run_cli_eip55(){
   if [[ "${recomputed}" == "${addr}" ]]; then
     pass "EIP-55 checksum matches"
   else
-    echo "Expected: ${addr}"
-    echo "Recomp.:  ${recomputed}"
-    fail "EIP-55 checksum"
+    echo "FAIL: EIP-55 checksum" >&2
+    exit 1
   fi
 }
 
-run_vector_verification(){
+verify_vectors_drift() {
   if ! "${PYTHON_BIN}" - <<'PY' "${KECCAK_SCRIPT}" "${VECTORS_FILE}"; then
 import json
 import subprocess
@@ -69,34 +71,39 @@ if regen != canonical:
         sys.stderr.write(line)
     sys.exit(1)
 PY
-    fail "Keccak vector fixture drift"
+    echo "FAIL: Keccak vector fixture drift" >&2
+    exit 1
   fi
   pass "Keccak vector fixture up-to-date"
+}
 
-  if [[ -n "${KECCAK_VECTOR_SIG_B64-}" ]]; then
-    local sig_file
-    sig_file="$(mktemp)"
-    trap 'rm -f "${sig_file}"' EXIT
-    if ! printf '%s' "${KECCAK_VECTOR_SIG_B64}" | base64 -d >"${sig_file}" 2>/dev/null; then
-      fail "Unable to decode KECCAK_VECTOR_SIG_B64"
+verify_signature() {
+  local sig_file="${KECCAK_VECTOR_SIG_B64_FILE-}"
+  if [[ -z "${sig_file}" ]]; then
+    if (( TEST_SIGNED_MODE == 1 )); then
+      echo "Missing keccak signature artifact" >&2
+      exit 1
     fi
-    if openssl dgst -sha256 -verify "${REFERENCE_PUB}" -signature "${sig_file}" "${VECTORS_FILE}" >/dev/null 2>&1; then
-      pass "Keccak vector signature verified"
-    else
-      fail "Keccak vector signature verification failed"
-    fi
-    rm -f "${sig_file}"
-    trap - EXIT
+    echo "INFO: Keccak signature unavailable; skipping verification" >&2
+    return
+  fi
+
+  ensure_secret_file_mode "${sig_file}" "keccak fixture signature"
+
+  if openssl dgst -sha256 -verify "${REFERENCE_PUB}" -signature "${sig_file}" "${VECTORS_FILE}" >/dev/null 2>&1; then
+    pass "Keccak vector signature verified"
   else
-    echo "INFO: KECCAK_VECTOR_SIG_B64 not set; skipping signature verification" >&2
+    echo "FAIL: Keccak vector signature verification failed" >&2
+    exit 1
   fi
 }
 
-main(){
+main() {
   run_keccak_self_test
   run_cli_digests
   run_cli_eip55
-  run_vector_verification
+  verify_vectors_drift
+  verify_signature
 }
 
 main "$@"

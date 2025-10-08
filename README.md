@@ -6,6 +6,7 @@ This repo includes:
 - `eth-from-bash.sh`: BIP‑39 seed (PBKDF2), BIP‑32 (secp256k1) derivation for `m/44'/60'/0'/0/0`, public key → Ethereum address (Keccak‑256 + EIP‑55).
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
 - `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
+- `tests/load_secrets.sh`: Helper that materializes signature/HMAC secrets for the test harness.
 
 ## Features
 - BIP‑39 mnemonic generation (128‑bit entropy) or import via `--mnemonic`.
@@ -58,19 +59,25 @@ Output JSON fields:
 
 ## Tests
 
+`make check` enforces signed fixtures by default. Provide the following secrets as base64-encoded environment variables before running the suite:
+
+- `CORE_FLOW_FIXTURE_HMAC_KEY_B64`: binary key used for the HMAC guard over `tests/fixtures/core_flow_vectors.json`.
+- `CORE_FLOW_FIXTURE_HMAC_B64`: expected HMAC digest for the canonicalized core flow fixture.
+- `KECCAK_VECTOR_SIG_B64`: detached signature for `tests/fixtures/keccak_vectors.json` produced by the maintainer key shipped in `tests/fixtures/keccak_reference_pub.pem`.
+- `SECP256K1_VECTOR_SIG_B64`: detached signature for `tests/fixtures/secp256k1_vectors.json` produced by `tests/fixtures/secp256k1_vectors_pub.pem`.
+
 Run all tests:
 ```
 make check
 ```
+To perform an unsigned local run (skipping fixture verification), explicitly opt in:
+```
+UNSIGNED_TEST=1 make check
+```
 What is covered:
-- BIP‑39 seed vector (known mnemonic + passphrase `TREZOR`).
-- Generated mnemonic checksum roundtrip.
-- Environment overrides and guard rails.
-- Deterministic Keccak-256 primitives, vector regeneration, and signature verification (when signature secret provided).
-- secp256k1 primitive self-test and signed public key vectors.
-
-When available, export `KECCAK_VECTOR_SIG_B64` (base64 signature issued by the maintainer key in `tests/fixtures/keccak_reference_pub.pem`) to enforce fixture signing checks.
-Set `SECP256K1_VECTOR_SIG_B64` to the base64-encoded detached signature produced by the maintainer key stored in `tests/fixtures/secp256k1_vectors_pub.pem` to validate the secp256k1 bundle.
+- Core CLI flow vectors, environment guard rails, and fixture HMAC verification.
+- Deterministic Keccak-256 primitives, vector regeneration, and detached signature verification.
+- secp256k1 primitive self-test, vector verification, and detached signature validation.
 
 ### Development
 - Lint shell scripts:
