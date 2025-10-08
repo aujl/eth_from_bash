@@ -19,6 +19,6 @@ ensurepip.bootstrap()
 PY
 
 pip install --upgrade pip >/dev/null
-pip install pycryptodome >/dev/null
+pip install pycryptodome ecdsa >/dev/null
 
-echo "Virtualenv ready at .venv (pycryptodome installed)"
+echo "Virtualenv ready at .venv (pycryptodome, ecdsa installed)"
