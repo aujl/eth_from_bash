@@ -17,12 +17,6 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! "${PYTHON_BIN}" -c 'import ecdsa' >/dev/null 2>&1; then
-  if [[ -x "${SCRIPT_DIR}/.venv/bin/python3" ]]; then
-    PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python3"
-  fi
-fi
-
 # options: -q|--quiet to print only JSON
 #          --mnemonic "w1 ... w12" to use provided phrase
 #          --include-seed to include seed hex in JSON
