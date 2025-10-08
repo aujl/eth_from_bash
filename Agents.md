@@ -28,7 +28,7 @@ auditable, and reproducible, follow these conventions:
 
 ## Common Tasks
 - Run tests: `make check`
-- Prepare Python helpers if missing: `make venv` (installs `ecdsa` into `.venv/`)
+- Prepare Python helpers if missing: `make venv`.
 - Lint shell: `make lint` (requires `shellcheck`)
 
 ### Signed test workflow
@@ -39,13 +39,16 @@ auditable, and reproducible, follow these conventions:
   - `SIGNING_PUBKEY`: ASCII‑armored PGP public key for verification.
   - `SIGNING_CERT_SHA256`: Expected fingerprint used to guard against key
     substitution attacks.
+  - `SECP256K1_VECTOR_SIG_B64`: Base64 detached signature over
+    `tests/fixtures/secp256k1_vectors.json` signed by the key in
+    `tests/fixtures/secp256k1_vectors_pub.pem`.
   - For maintainers regenerating fixtures, set `SIGNING_KEY_HANDLE` to the
     hardware token slot and export `SIGNING_KEY_PASSPHRASE` only in an isolated
     shell (never in CI).
 - To execute the signed tests securely:
   1. `set -euo pipefail` before invoking `make check`.
-  2. Ensure `gpg` is installed and configured to use a restricted `GNUPGHOME`
-     with permissions `700`.
+  2. Ensure `gpg` and `openssl` are installed and configured to use restricted
+     homes with permissions `700` where applicable.
   3. Load secrets via environment variables or a temporary file sourced with
      `set -o noclobber` enabled to prevent accidental overwrite.
   4. Unset all signing secrets immediately after tests complete.

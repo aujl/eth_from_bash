@@ -3,10 +3,16 @@ set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPTS=(
+  test_secp256k1_vectors.sh
   test_cli_core.sh
   test_env_controls.sh
   test_keccak.sh
 )
+
+echo "==> Verifying secp256k1 primitive"
+python3 "${TEST_DIR}/../scripts/derive_seed_and_pub.py" selftest >/dev/null
+echo "-- secp256k1 primitive self-test passed"
+echo
 
 for script in "${SCRIPTS[@]}"; do
   echo "==> Running ${script}"

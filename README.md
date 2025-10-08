@@ -67,10 +67,10 @@ What is covered:
 - Generated mnemonic checksum roundtrip.
 - Environment overrides and guard rails.
 - Deterministic Keccak-256 primitives, vector regeneration, and signature verification (when signature secret provided).
+- secp256k1 primitive self-test and signed public key vectors.
 
 When available, export `KECCAK_VECTOR_SIG_B64` (base64 signature issued by the maintainer key in `tests/fixtures/keccak_reference_pub.pem`) to enforce fixture signing checks.
-
-If your system Python lacks `ecdsa`, `make check` will create a local virtualenv in `.venv/` and install it automatically.
+Set `SECP256K1_VECTOR_SIG_B64` to the base64-encoded detached signature produced by the maintainer key stored in `tests/fixtures/secp256k1_vectors_pub.pem` to validate the secp256k1 bundle.
 
 ### Development
 - Lint shell scripts:
@@ -85,7 +85,7 @@ make venv
 
 ### Scripts
 - `scripts/check_deps.sh`: Verify CLI dependencies.
-- `scripts/ensure_venv.sh`: Create `.venv` and install `ecdsa`.
+- `scripts/ensure_venv.sh`: Create `.venv` for local tooling.
 - `scripts/keccak_primitives.py`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/has_keccak.py`: Sanity-check the internal Keccak primitive.
 - `scripts/eip55_recompute.py`: Recompute EIP‑55 checksum for an address.
@@ -98,3 +98,8 @@ Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repo
 - This is a demo/reference script. Do not use on untrusted machines.
 - Never paste real seed phrases into terminals on shared environments.
 - Consider air‑gapped usage and review the code before production use.
+To audit only the secp256k1 primitive helper:
+```
+python3 scripts/derive_seed_and_pub.py selftest
+```
+

@@ -7,12 +7,6 @@ import sys
 from hashlib import pbkdf2_hmac
 from typing import Optional, Tuple
 
-USE_ECDSA = True
-try:
-    from ecdsa import SECP256k1, SigningKey
-except ImportError:  # pragma: no cover - handled by caller environment
-    USE_ECDSA = False
-
 _P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 _N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 _GX = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
@@ -42,13 +36,26 @@ def _point_add(p1: Optional[Point], p2: Optional[Point]) -> Optional[Point]:
 
 
 def _scalar_mult(k: int, point: Point) -> Point:
+    """Multiply *point* by scalar *k* using double-and-add.
+
+    The routine performs a left-to-right double-and-add using Python integers.
+    This implementation is not constant time because it branches on the bits of
+    *k*. Callers must ensure that *k* is a fully sanitised secret (uniformly
+    random and never attacker-controlled) before invoking this helper. The CLI
+    validates scalars tightly before they reach this function.
+    """
+
+    if k <= 0 or k >= _N:
+        raise SystemExit("Scalar out of range for multiplication")
+
     result: Optional[Point] = None
     addend = point
-    while k:
-        if k & 1:
+    mask = k
+    while mask:
+        if mask & 1:
             result = _point_add(result, addend)
         addend = _point_add(addend, addend)
-        k >>= 1
+        mask >>= 1
     if result is None:
         raise SystemExit("Scalar multiplication resulted in point at infinity")
     return result
@@ -69,22 +76,56 @@ def derive_pubkeys(priv_hex: str) -> tuple[str, str]:
         raise SystemExit("Private key must be valid hex") from exc
     if len(priv_bytes) != 32:
         raise SystemExit("Private key must be 32 bytes (64 hex characters)")
-    if USE_ECDSA:
-        sk = SigningKey.from_string(priv_bytes, curve=SECP256k1)
-        point = sk.verifying_key.pubkey.point
-        x = point.x()
-        y = point.y()
-    else:
-        priv_int = int.from_bytes(priv_bytes, "big")
-        if priv_int <= 0 or priv_int >= _N:
-            raise SystemExit("Private key scalar out of range")
-        x, y = _scalar_mult(priv_int, (_GX, _GY))
+    priv_int = int.from_bytes(priv_bytes, "big")
+    if priv_int <= 0 or priv_int >= _N:
+        raise SystemExit("Private key scalar out of range")
+    x, y = _scalar_mult(priv_int, (_GX, _GY))
     x_bytes = x.to_bytes(32, "big")
     y_bytes = y.to_bytes(32, "big")
     uncompressed = b"\x04" + x_bytes + y_bytes
     prefix = 0x02 | (y & 1)
     compressed = bytes([prefix]) + x_bytes
     return compressed.hex(), uncompressed.hex()
+
+
+def _run_selftest() -> None:
+    """Execute internal correctness checks for the secp256k1 helper."""
+
+    # 1. Generator multiplication should yield the canonical generator.
+    gen_x, gen_y = _scalar_mult(1, (_GX, _GY))
+    if (gen_x, gen_y) != (_GX, _GY):
+        raise SystemExit("Generator self-test failed")
+
+    # 2. Doubling the generator must match the known SEC1 test vector.
+    two_x, two_y = _scalar_mult(2, (_GX, _GY))
+    if (
+        two_x
+        != 0xC6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5
+        or two_y
+        != 0x1AE168FEA63DC339A3C58419466CEAEEF7F632653266D0E1236431A950CFE52A
+    ):
+        raise SystemExit("Generator doubling self-test failed")
+
+    # 3. Derive the canonical public key for scalar 1 and compare both encodings.
+    comp, uncomp = derive_pubkeys(
+        "0000000000000000000000000000000000000000000000000000000000000001"
+    )
+    if comp != "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798":
+        raise SystemExit("Compressed derivation self-test failed")
+    if (
+        uncomp
+        != "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+    ):
+        raise SystemExit("Uncompressed derivation self-test failed")
+
+    # 4. Ensure edge scalars are rejected.
+    for invalid in ("00" * 32, f"{_N:064x}"):
+        try:
+            derive_pubkeys(invalid)
+        except SystemExit:
+            continue
+        raise SystemExit("Scalar validation self-test failed")
 
 
 def main(argv: list[str]) -> int:
@@ -98,6 +139,10 @@ def main(argv: list[str]) -> int:
     pub_parser = subparsers.add_parser("pub", help="Derive secp256k1 pubkeys from private key hex")
     pub_parser.add_argument("--priv-hex", required=True, help="Private key hex (64 chars)")
 
+    subparsers.add_parser(
+        "selftest", help="Run internal secp256k1 primitive validation"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -108,6 +153,11 @@ def main(argv: list[str]) -> int:
     if args.command == "pub":
         compressed, uncompressed = derive_pubkeys(args.priv_hex)
         print(f"{compressed} {uncompressed}")
+        return 0
+
+    if args.command == "selftest":
+        _run_selftest()
+        print("secp256k1 self-test passed")
         return 0
 
     parser.error("unknown command")

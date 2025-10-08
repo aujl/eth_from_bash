@@ -3,10 +3,6 @@ set -euo pipefail
 # shellcheck source=tests/common.sh
 source "$(dirname "$0")/common.sh"
 
-if ! require_python_module ecdsa; then
-  echo "WARNING: python module 'ecdsa' missing; using pure-Python secp256k1 fallback." >&2
-fi
-
 run_seed_vector(){
   local mn="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
   local expected="c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04"
