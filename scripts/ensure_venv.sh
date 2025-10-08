@@ -11,7 +11,7 @@ if [[ ! -d .venv ]]; then
 fi
 
 # Activate and ensure pip exists
-# shellcheck source=/dev/null
+# shellcheck source=/dev/null disable=SC1091
 source .venv/bin/activate
 python - <<'PY' >/dev/null 2>&1 || true
 import ensurepip, sys
@@ -22,4 +22,3 @@ pip install --upgrade pip >/dev/null
 pip install pycryptodome >/dev/null
 
 echo "Virtualenv ready at .venv (pycryptodome installed)"
-
