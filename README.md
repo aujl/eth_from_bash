@@ -5,7 +5,7 @@ Deterministically derive an Ethereum private key and address from a BIP‑39 mne
 This repo includes:
 - `eth-from-bash.sh`: BIP‑39 seed (PBKDF2), BIP‑32 (secp256k1) derivation for `m/44'/60'/0'/0/0`, public key → Ethereum address (Keccak‑256 + EIP‑55).
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
-- `tests/run.sh`: Sanity tests for BIP‑39 seed vector, mnemonic checksum, and EIP‑55.
+- `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
 
 ## Features
 - BIP‑39 mnemonic generation (128‑bit entropy) or import via `--mnemonic`.
@@ -16,15 +16,12 @@ This repo includes:
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
-- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `openssl` (v3+), `perl`.
-- Python 3 with `pycryptodome` for Keccak‑256 (recommended):
-  - Ubuntu/Debian: `sudo apt install python3-pycryptodome`
-  - Or via pip: `pip install pycryptodome`
-- Optional fallback: Perl `Digest::Keccak` if Python Keccak is missing.
+- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `openssl` (v3+).
+- Python 3 (stdlib only) for deterministic Keccak-256 and elliptic curve helpers.
 
 On Debian/Ubuntu:
 ```
-sudo apt update && sudo apt install -y jq bc vim-common openssl perl python3 python3-pip python3-pycryptodome
+sudo apt update && sudo apt install -y jq bc vim-common openssl python3 python3-pip
 ```
 
 ## Usage
@@ -68,9 +65,12 @@ make check
 What is covered:
 - BIP‑39 seed vector (known mnemonic + passphrase `TREZOR`).
 - Generated mnemonic checksum roundtrip.
-- Keccak provider presence and EIP‑55 validation (when Keccak is available).
+- Environment overrides and guard rails.
+- Deterministic Keccak-256 primitives, vector regeneration, and signature verification (when signature secret provided).
 
-If your system Python lacks Keccak, `make check` will create a local virtualenv in `.venv/` and install `pycryptodome` there automatically, then run the tests using that environment.
+When available, export `KECCAK_VECTOR_SIG_B64` (base64 signature issued by the maintainer key in `tests/fixtures/keccak_reference_pub.pem`) to enforce fixture signing checks.
+
+If your system Python lacks `ecdsa`, `make check` will create a local virtualenv in `.venv/` and install it automatically.
 
 ### Development
 - Lint shell scripts:
@@ -85,16 +85,14 @@ make venv
 
 ### Scripts
 - `scripts/check_deps.sh`: Verify CLI dependencies.
-- `scripts/ensure_venv.sh`: Create `.venv` and install `pycryptodome`.
-- `scripts/has_keccak.py`: Detect Python Keccak provider.
-- `scripts/has_perl_keccak.pl`: Detect Perl Keccak provider.
-- `scripts/eip55_recompute.py|.pl`: Recompute EIP‑55 checksum for an address.
-- `scripts/keccak256.py`: Keccak‑256 of stdin bytes to hex.
+- `scripts/ensure_venv.sh`: Create `.venv` and install `ecdsa`.
+- `scripts/keccak_primitives.py`: Constant-time Keccak-256 helpers and CLI.
+- `scripts/has_keccak.py`: Sanity-check the internal Keccak primitive.
+- `scripts/eip55_recompute.py`: Recompute EIP‑55 checksum for an address.
+- `scripts/keccak256.py`: Keccak‑256 of stdin bytes to hex via internal primitive.
 
 ## Notes on Keccak vs SHA‑3
-Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. The script prefers Python `pycryptodome` (`Crypto.Hash.keccak`) to compute Keccak‑256. If no Keccak provider is installed, use `--no-address` or install one of:
-- `pip install pycryptodome` (recommended)
-- `sudo apt install libdigest-keccak-perl`
+Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, pure-Python Keccak-256 implementation in `scripts/keccak_primitives.py`, so no external cryptography packages are required.
 
 ## Security
 - This is a demo/reference script. Do not use on untrusted machines.

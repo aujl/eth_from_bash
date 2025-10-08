@@ -2,7 +2,7 @@
 set -euo pipefail
 
 missing=0
-deps=(jq bc xxd openssl perl python3)
+deps=(jq bc xxd openssl python3)
 for cmd in "${deps[@]}"; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     echo "Missing dependency: ${cmd}" >&2

@@ -28,7 +28,7 @@ auditable, and reproducible, follow these conventions:
 
 ## Common Tasks
 - Run tests: `make check`
-- Prepare Keccak if missing: `make venv` (installs `pycryptodome` into `.venv/`)
+- Prepare Python helpers if missing: `make venv` (installs `ecdsa` into `.venv/`)
 - Lint shell: `make lint` (requires `shellcheck`)
 
 ### Signed test workflow
@@ -69,7 +69,7 @@ auditable, and reproducible, follow these conventions:
 ## Style
 - Bash: `set -euo pipefail`, use functions for readability, avoid unnecessary subshells.
 - Python: Small, single‑purpose scripts with `#!/usr/bin/env python3` and `if __name__ == '__main__':` guards.
-- Perl: Keep usage minimal and scoped to Keccak fallback.
+- Perl: Avoid introducing new Perl dependencies.
 
 ## Security Notes
 - Never commit secrets or real mnemonics.
