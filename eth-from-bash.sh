@@ -9,6 +9,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_HELPER="${SCRIPT_DIR}/scripts/derive_seed_and_pub.py"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
+ENT_HEX_ENV="${ENT_HEX-}"
+MNEMONIC_ENV="${MNEMONIC-}"
+
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Python interpreter '${PYTHON_BIN}' not found" >&2
   exit 1
@@ -27,27 +30,56 @@ QUIET=0
 INCLUDE_SEED=0
 USER_MNEMONIC=""
 NO_ADDRESS=0
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -q|--quiet)
-      QUIET=1; shift ;;
-    --include-seed)
-      INCLUDE_SEED=1; shift ;;
-    --mnemonic)
-      shift
-      USER_MNEMONIC="${1-}"
-      if [[ -z "${USER_MNEMONIC}" ]]; then echo "--mnemonic requires a value" >&2; exit 2; fi
-      shift ;;
-    --no-address)
-      NO_ADDRESS=1; shift ;;
-    --)
-      shift; break ;;
-    -*)
-      echo "Unknown option: $1" >&2; exit 2 ;;
-    *)
-      break ;;
-  esac
-done
+USE_ENV_MNEMONIC=0
+
+if [[ -n "${MNEMONIC_ENV}" ]]; then
+  USER_MNEMONIC="${MNEMONIC_ENV}"
+  USE_ENV_MNEMONIC=1
+fi
+
+if [[ "${USE_ENV_MNEMONIC}" -eq 0 ]]; then
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -q|--quiet)
+        QUIET=1; shift ;;
+      --include-seed)
+        INCLUDE_SEED=1; shift ;;
+      --mnemonic)
+        shift
+        USER_MNEMONIC="${1-}"
+        if [[ -z "${USER_MNEMONIC}" ]]; then echo "--mnemonic requires a value" >&2; exit 2; fi
+        shift ;;
+      --no-address)
+        NO_ADDRESS=1; shift ;;
+      --)
+        shift; break ;;
+      -*)
+        echo "Unknown option: $1" >&2; exit 2 ;;
+      *)
+        break ;;
+    esac
+  done
+else
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -q|--quiet)
+        QUIET=1; shift ;;
+      --include-seed)
+        INCLUDE_SEED=1; shift ;;
+      --no-address)
+        NO_ADDRESS=1; shift ;;
+      --mnemonic)
+        echo "MNEMONIC environment variable is set; remove --mnemonic" >&2
+        exit 2 ;;
+      --)
+        shift; break ;;
+      -*)
+        echo "Unknown option: $1" >&2; exit 2 ;;
+      *)
+        break ;;
+    esac
+  done
+fi
 
 debug(){ if [[ "${QUIET}" -eq 0 ]]; then echo "$@" >&2; fi }
 
@@ -67,33 +99,71 @@ done
 
 
 # Use provided mnemonic if any; else generate new 128-bit entropy phrase
-if [[ -z "${USER_MNEMONIC}" ]]; then
-  ENT_HEX="$(head -c 16 /dev/random | xxd -p -c 16 | tr -d '\n')"
-else
-  ENT_HEX=""
+validate_entropy_hex(){
+  local candidate="$1"
+  if [[ ! "${candidate}" =~ ^[0-9a-fA-F]{32}$ ]]; then
+    echo "ENT_HEX must be 32 hexadecimal characters" >&2
+    exit 2
+  fi
+  printf '%s' "${candidate,,}"
+}
+
+generate_entropy_hex(){
+  local hex
+  if command -v openssl >/dev/null 2>&1; then
+    if hex="$(openssl rand -hex 16 2>/dev/null)"; then
+      if [[ "${hex}" =~ ^[0-9a-fA-F]{32}$ ]]; then
+        printf '%s' "${hex,,}"
+        return 0
+      fi
+    fi
+    debug "openssl rand failed, falling back to /dev/urandom"
+  fi
+  if [[ -r /dev/urandom ]]; then
+    hex="$(head -c 16 /dev/urandom | xxd -p -c 16 | tr -d '\n')"
+    if [[ "${hex}" =~ ^[0-9a-fA-F]{32}$ ]]; then
+      printf '%s' "${hex,,}"
+      return 0
+    fi
+  fi
+  echo "Unable to produce entropy: openssl rand failed and /dev/urandom unavailable" >&2
+  exit 1
+}
+
+ENT_HEX_VALUE=""
+if [[ -n "${ENT_HEX_ENV}" ]]; then
+  ENT_HEX_VALUE="$(validate_entropy_hex "${ENT_HEX_ENV}")"
 fi
 
+if [[ -z "${USER_MNEMONIC}" ]]; then
+  if [[ -z "${ENT_HEX_VALUE}" ]]; then
+    ENT_HEX_VALUE="$(generate_entropy_hex)"
+  fi
+else
+  ENT_HEX_VALUE=""
+fi
 
-if [[ -n "${ENT_HEX}" ]]; then
-  CS_NIB_HEX="$(printf "%s" "${ENT_HEX}" | xxd -r -p | sha256sum | cut -c1)"
+if [[ -n "${ENT_HEX_VALUE}" ]]; then
+  CS_NIB_HEX="$(printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | sha256sum | cut -c1)"
   # sanitize CS_NIB_HEX
   CS_NIB_HEX_clean="$(echo "${CS_NIB_HEX}" | tr -cd '0-9A-Fa-f')"
-  CS_BITS="$(echo "obase=2; ibase=16; ${CS_NIB_HEX_clean^^}" | bc | awk '{printf "%04d\n", $0}')"
+  CS_BITS="$(echo "obase=2; ibase=16; ${CS_NIB_HEX_clean^^}" | bc | awk '{printf "%04d
+", $0}')"
 fi
 
-if [[ -n "${ENT_HEX}" ]]; then
+if [[ -n "${ENT_HEX_VALUE}" ]]; then
   BIN_ENT="$(
-    printf "%s" "${ENT_HEX}" | xxd -r -p | \
+    printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | \
     xxd -b -g 0 -c 16 | \
     awk '{ for(i=2; i < NF; i++) printf "%s", $i }'
   )"
 fi
 
-if [[ -n "${ENT_HEX}" ]]; then
+if [[ -n "${ENT_HEX_VALUE}" ]]; then
   BIN_ALL="${BIN_ENT}${CS_BITS}"
 fi
 
-if [[ -n "${ENT_HEX}" ]]; then
+if [[ -n "${ENT_HEX_VALUE}" ]]; then
   debug "checksum bits: ${CS_BITS}"
   debug "checksum nib_hex: ${CS_NIB_HEX}"
   debug "binary entropy: ${BIN_ENT}"
@@ -101,6 +171,12 @@ if [[ -n "${ENT_HEX}" ]]; then
 fi
 
 mapfile -t WORDS < "${WLIST}"
+
+declare -A WORD_SET=()
+for word in "${WORDS[@]}"; do
+  WORD_SET["${word}"]=1
+done
+
 if [[ -z "${USER_MNEMONIC}" ]]; then
   mnemonic=()
   for i in {0..11}; do
@@ -115,6 +191,25 @@ if [[ -z "${USER_MNEMONIC}" ]]; then
   done
   MNEMONIC="${mnemonic[*]}"
 else
+  if [[ -z "${USER_MNEMONIC// }" ]]; then
+    echo "Provided mnemonic is empty" >&2
+    exit 2
+  fi
+  read -r -a mnemonic_words <<<"${USER_MNEMONIC}"
+  if (( ${#mnemonic_words[@]} == 0 )); then
+    echo "Provided mnemonic is empty" >&2
+    exit 2
+  fi
+  if (( ${#mnemonic_words[@]} % 3 != 0 )); then
+    echo "Mnemonic word count must be a multiple of 3" >&2
+    exit 2
+  fi
+  for w in "${mnemonic_words[@]}"; do
+    if [[ -z "${WORD_SET[${w}]+x}" ]]; then
+      echo "Mnemonic word '${w}' not in wordlist" >&2
+      exit 2
+    fi
+  done
   MNEMONIC="${USER_MNEMONIC}"
 fi
 

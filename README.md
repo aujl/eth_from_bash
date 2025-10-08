@@ -12,6 +12,7 @@ This repo includes:
 - Seed derivation via OpenSSL 3 PBKDF2 (HMAC‑SHA512, 2048 iters).
 - BIP‑32 derivation with guards: skips invalid `IL >= n` or child key = 0.
 - Ethereum address: Keccak‑256 of uncompressed pubkey (no prefix), EIP‑55 checksum.
+- Non-blocking entropy via `openssl rand -hex 16` with `/dev/urandom` fallback.
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
@@ -42,6 +43,14 @@ bash eth-from-bash.sh -q --include-seed --mnemonic "abandon abandon ... about" e
 ```
 bash eth-from-bash.sh -q --no-address english_bip-39.txt
 ```
+
+- Override entropy or mnemonics via environment variables:
+```
+ENT_HEX=00000000000000000000000000000000 bash eth-from-bash.sh -q english_bip-39.txt
+MNEMONIC="abandon abandon ... about" bash eth-from-bash.sh -q --include-seed english_bip-39.txt TREZOR
+```
+  - `ENT_HEX` must be 32 hexadecimal characters (128 bits).
+  - `MNEMONIC` must contain valid BIP-39 words (multiples of three). When set, `--mnemonic` is rejected in favor of the environment.
 
 Output JSON fields:
 - `mnemonic`: 12 words (space‑separated)
