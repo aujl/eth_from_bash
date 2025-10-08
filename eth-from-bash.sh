@@ -97,6 +97,55 @@ for cmd in xxd bc awk sha256sum openssl perl python3; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 
+N_HEX="FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"
+
+bn_add_mod_n(){
+  local a="$1" b="$2"
+  # bc treats lowercase a-f as variables; force uppercase for hex digits
+  a="${a^^}"
+  b="${b^^}"
+  # Important: set obase before ibase in bc. Otherwise obase=16 would be
+  # interpreted in the new base (0x16 = 22), yielding spaced, non-hex output.
+  local sum
+  sum="$(bc <<<"obase=16; ibase=16; ( ${a} + ${b} ) % ${N_HEX}")"
+  sum="${sum^^}"
+  printf "%064s" "${sum}" | tr ' ' 0
+}
+
+# Return 1 if a >= b (hex), else 0
+bn_ge(){
+  local a="${1^^}" b="${2^^}"
+  bc <<<"obase=10; ibase=16; ${a} >= ${b}"
+}
+
+bn_is_zero(){
+  local a="${1^^}"
+  # quick check for 64 zeros
+  [[ "${a}" =~ ^0+$ ]] && { echo 1; return; }
+  echo 0
+}
+
+validate_private_scalar(){
+  local candidate="$1"
+  local label="${2:-scalar}"
+  if [[ ! "${candidate}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    echo "Invalid ${label}: must be 64 hex characters" >&2
+    exit 1
+  fi
+  local ge_result
+  ge_result="$(bn_ge "${candidate}" "${N_HEX}")"
+  if [[ "${ge_result}" -eq 1 ]]; then
+    echo "Invalid ${label}: value >= curve order" >&2
+    exit 1
+  fi
+  local zero_result
+  zero_result="$(bn_is_zero "${candidate}")"
+  if [[ "${zero_result}" -eq 1 ]]; then
+    echo "Invalid ${label}: zero" >&2
+    exit 1
+  fi
+}
+
 
 # Use provided mnemonic if any; else generate new 128-bit entropy phrase
 validate_entropy_hex(){
@@ -228,34 +277,7 @@ IL="${I_MASTER:0:64}"; IR="${I_MASTER:64:64}"
 debug "I_MASTER: ${I_MASTER}"
 debug "IL: ${IL}"
 debug "IR: ${IR}"
-# define bn_add_mod_n, derive_hardened, derive_normal, pub derivation, etc
-N_HEX="FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"
-
-bn_add_mod_n(){
-  local a="$1" b="$2"
-  # bc treats lowercase a-f as variables; force uppercase for hex digits
-  a="${a^^}"
-  b="${b^^}"
-  # Important: set obase before ibase in bc. Otherwise obase=16 would be
-  # interpreted in the new base (0x16 = 22), yielding spaced, non-hex output.
-  local sum
-  sum="$(bc <<<"obase=16; ibase=16; ( ${a} + ${b} ) % ${N_HEX}")"
-  sum="${sum^^}"
-  printf "%064s" "${sum}" | tr ' ' 0
-}
-
-# Return 1 if a >= b (hex), else 0
-bn_ge(){
-  local a="${1^^}" b="${2^^}"
-  bc <<<"obase=10; ibase=16; ${a} >= ${b}"
-}
-
-bn_is_zero(){
-  local a="${1^^}"
-  # quick check for 64 zeros
-  [[ "${a}" =~ ^0+$ ]] && { echo 1; return; }
-  echo 0
-}
+validate_private_scalar "${IL}" "master IL"
 
 derive_hardened(){
   local kpar="$1" cpar="$2" index="$3"
@@ -320,17 +342,30 @@ derive_normal(){
 # path m/44'/60'/0'/0/0
 k="${IL}"; c="${IR}"
 
+validate_private_scalar "${k}" "m master private key"
+
 debug "before derivation"
-read -r k c < <(derive_hardened "${k}" "${c}" 44)
-read -r k c < <(derive_hardened "${k}" "${c}" 60)
-read -r k c < <(derive_hardened "${k}" "${c}" 0)
+read -r next_k c < <(derive_hardened "${k}" "${c}" 44)
+validate_private_scalar "${next_k}" "m/44' private key"
+k="${next_k}"
+read -r next_k c < <(derive_hardened "${k}" "${c}" 60)
+validate_private_scalar "${next_k}" "m/44'/60' private key"
+k="${next_k}"
+read -r next_k c < <(derive_hardened "${k}" "${c}" 0)
+validate_private_scalar "${next_k}" "m/44'/60'/0' private key"
+k="${next_k}"
 
 debug "after derive hardened"
 
-read -r k c < <(derive_normal   "${k}" "${c}" 0)
-read -r k c < <(derive_normal   "${k}" "${c}" 0)
+read -r next_k c < <(derive_normal   "${k}" "${c}" 0)
+validate_private_scalar "${next_k}" "m/44'/60'/0'/0 private key"
+k="${next_k}"
+read -r next_k c < <(derive_normal   "${k}" "${c}" 0)
+validate_private_scalar "${next_k}" "m/44'/60'/0'/0/0 private key"
+k="${next_k}"
 debug "after derive normal"
 
+validate_private_scalar "${k}" "final private key"
 PRIV_HEX="${k}"
 
 debug "PK_HEX k : ${k} "

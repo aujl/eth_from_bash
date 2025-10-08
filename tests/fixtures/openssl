@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+real_bin="${OPENSSL_REAL:-/usr/bin/openssl}"
+mode="${ETH_FROM_BASH_TEST_SCENARIO:-}"
+
+if [[ "${mode}" == "master_il_zero" && "${1-}" == "dgst" ]]; then
+  if [[ "${2-}" == "-sha512" ]]; then
+    dd if=/dev/zero bs=64 count=1 2>/dev/null
+    exit 0
+  fi
+fi
+
+exec "${real_bin}" "$@"
