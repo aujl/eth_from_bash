@@ -28,5 +28,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq bc vim-common openssl perl python3 python3-pip python3-pycryptodome
       - name: Run tests
+        env:
+          CORE_FLOW_FIXTURE_HMAC_KEY_B64: ${{ secrets.CORE_FLOW_FIXTURE_HMAC_KEY_B64 }}
+          CORE_FLOW_FIXTURE_HMAC_B64: ${{ secrets.CORE_FLOW_FIXTURE_HMAC_B64 }}
+          KECCAK_VECTOR_SIG_B64: ${{ secrets.KECCAK_VECTOR_SIG_B64 }}
+          SECP256K1_VECTOR_SIG_B64: ${{ secrets.SECP256K1_VECTOR_SIG_B64 }}
+          SIGNED_TEST: "1"
         run: |
           make check
