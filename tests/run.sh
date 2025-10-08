@@ -5,6 +5,10 @@ ROOT_DIR="$(readlink -f "$(dirname "$0")/..")"
 SCRIPT="${ROOT_DIR}/eth-from-bash.sh"
 WLIST="${ROOT_DIR}/english_bip-39.txt"
 
+if ! python3 -c 'import ecdsa' >/dev/null 2>&1; then
+  echo "WARNING: python module 'ecdsa' missing; using pure-Python secp256k1 fallback." >&2
+fi
+
 pass(){ echo "PASS: $1"; }
 fail(){ echo "FAIL: $1"; exit 1; }
 
@@ -20,6 +24,25 @@ test_seed_vector(){
     echo "Got:     ${seed}"
     echo "Expected: ${expected}"
     fail "BIP39 PBKDF2 seed vector"
+  fi
+}
+
+test_python_helper_pub(){
+  local helper="${ROOT_DIR}/scripts/derive_seed_and_pub.py"
+  local out
+  out=$(python3 "${helper}" pub --priv-hex 0000000000000000000000000000000000000000000000000000000000000001)
+  local comp uncomp
+  read -r comp uncomp <<<"${out}"
+  local expected_comp="0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  local expected_uncomp="0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+  if [[ "${comp}" == "${expected_comp}" && "${uncomp}" == "${expected_uncomp}" ]]; then
+    pass "Python helper secp256k1 derivation"
+  else
+    echo "comp:      ${comp}"
+    echo "expected: ${expected_comp}"
+    echo "uncomp:   ${uncomp}"
+    echo "expected: ${expected_uncomp}"
+    fail "Python helper secp256k1 derivation"
   fi
 }
 
@@ -116,6 +139,7 @@ test_eip55(){
 }
 
 test_seed_vector
+test_python_helper_pub
 test_mnemonic_checksum
 test_keccak_provider
 test_eip55

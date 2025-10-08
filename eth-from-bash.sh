@@ -5,6 +5,21 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_HELPER="${SCRIPT_DIR}/scripts/derive_seed_and_pub.py"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+  echo "Python interpreter '${PYTHON_BIN}' not found" >&2
+  exit 1
+fi
+
+if ! "${PYTHON_BIN}" -c 'import ecdsa' >/dev/null 2>&1; then
+  if [[ -x "${SCRIPT_DIR}/.venv/bin/python3" ]]; then
+    PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python3"
+  fi
+fi
+
 # options: -q|--quiet to print only JSON
 #          --mnemonic "w1 ... w12" to use provided phrase
 #          --include-seed to include seed hex in JSON
@@ -46,7 +61,7 @@ PASSPHRASE="${*:-}"
 [[ "$(wc -l < "${WLIST}")" -eq 2048 ]] || { echo "wordlist must have 2048 lines" >&2; exit 1; }
 
 # check dependencies
-for cmd in xxd bc awk sha256sum openssl perl; do
+for cmd in xxd bc awk sha256sum openssl perl python3; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 
@@ -103,15 +118,11 @@ else
   MNEMONIC="${USER_MNEMONIC}"
 fi
 
-# Derive seed with OpenSSL 3.0's kdf command
-# OpenSSL 3 kdf PBKDF2 prints colon-separated hex; strip colons/newlines
+# Derive seed using Python helper (PBKDF2-HMAC-SHA512)
 SEED_HEX="$(
-  openssl kdf -keylen 64 \
-    -kdfopt digest:SHA512 \
-    -kdfopt pass:"${MNEMONIC}" \
-    -kdfopt salt:"mnemonic${PASSPHRASE}" \
-    -kdfopt iter:2048 PBKDF2 \
-  | tr -d ':\n' | tr 'A-F' 'a-f'
+  "${PYTHON_BIN}" "${PYTHON_HELPER}" seed \
+    --mnemonic "${MNEMONIC}" \
+    --passphrase "${PASSPHRASE}"
 )"
 
 debug "Hex Seed: ${SEED_HEX}"
@@ -177,17 +188,11 @@ derive_hardened(){
   done
 }
 
-pkcs8_from_priv_hex(){
-  local khex="$1"
-  local derhex="302E0201010420${khex}A00706052B8104000A"
-  printf "%s" "${derhex}" | xxd -r -p
-}
-
 pub_compressed_from_priv_hex(){
   local khex="$1"
-  pkcs8_from_priv_hex "${khex}" | \
-    openssl ec -inform DER -pubout -conv_form compressed -outform DER 2>/dev/null | \
-    tail -c 33 | xxd -p -c 33
+  local comp
+  read -r comp _ <<<"$("${PYTHON_BIN}" "${PYTHON_HELPER}" pub --priv-hex "${khex}")"
+  printf "%s" "${comp}"
 }
 
 derive_normal(){
@@ -237,18 +242,30 @@ debug "PK_HEX k : ${k} "
 
 ADDR_EIP55="0x"
 if [[ "${NO_ADDRESS}" -eq 0 ]]; then
-  PUB_UNCOMP_HEX="$(
-    pkcs8_from_priv_hex "${PRIV_HEX}" | \
-    openssl ec -inform DER -pubout -conv_form uncompressed -outform DER 2>/dev/null | \
-    tail -c 65 | xxd -p -c 65
-  )"
+  read -r PUB_COMP_HEX PUB_UNCOMP_HEX <<<"$("${PYTHON_BIN}" "${PYTHON_HELPER}" pub --priv-hex "${PRIV_HEX}")"
+  debug "PUB_COMP_HEX: ${PUB_COMP_HEX}"
   PUB_XY_HEX="${PUB_UNCOMP_HEX:2}"
   debug "PUB_XY_HEX: ${PUB_XY_HEX}"
 fi
 
 eth_keccak256_hex(){
   # Primary: Python (pycryptodome) Keccak-256; read from stdin
-  if command -v python3 >/dev/null; then
+  if command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    if "${PYTHON_BIN}" -c '
+import sys
+try:
+    from Crypto.Hash import keccak
+except Exception:
+    sys.exit(1)
+data = sys.stdin.buffer.read()
+k = keccak.new(digest_bits=256)
+k.update(data)
+sys.stdout.write(k.hexdigest())
+' ; then
+      return
+    fi
+  fi
+  if [[ "${PYTHON_BIN}" != "python3" ]] && command -v python3 >/dev/null 2>&1; then
     if python3 -c '
 import sys
 try:
