@@ -14,8 +14,8 @@ readonly ROOT_DIR="$(readlink -f "${TESTS_DIR}/..")"
 SIGNED_TEST="${SIGNED_TEST:-0}"
 UNSIGNED_TEST="${UNSIGNED_TEST:-0}"
 
-if [[ "${UNSIGNED_TEST}" == "1" && ( "${SIGNED_TEST}" == "1" || -n "${CI-}" ) ]]; then
-  echo "UNSIGNED_TEST=1 conflicts with CI or SIGNED_TEST=1" >&2
+if [[ "${UNSIGNED_TEST}" == "1" && "${SIGNED_TEST}" == "1" ]]; then
+  echo "UNSIGNED_TEST=1 conflicts with SIGNED_TEST=1" >&2
   exit 1
 fi
 

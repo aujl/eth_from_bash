@@ -6,6 +6,7 @@ TEST_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${TEST_DIR}/load_secrets.sh"
 
 SCRIPTS=(
+  load_secrets_mode.sh
   core_flow.sh
   keccak_primitive.sh
   secp256k1_primitive.sh
