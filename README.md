@@ -79,6 +79,25 @@ What is covered:
 - Deterministic Keccak-256 primitives, vector regeneration, and detached signature verification.
 - secp256k1 primitive self-test, vector verification, and detached signature validation.
 
+## Maintainer signing workflow
+Maintainers can refresh the signing material entirely offline. The workflow produces fresh maintainer keypairs, regenerates the fixture HMAC/signatures, and exports environment assignments that `tests/load_secrets.sh` understands.
+
+1. Generate or rotate maintainer keys (RSA for Keccak fixtures, secp256k1 for elliptic-curve fixtures). Private keys are stored under `~/.config/eth_from_bash/maintainer` by default and public keys are written back into `tests/fixtures/`.
+   ```bash
+   tests/generate_maintainer_keys.sh
+   ```
+2. Recreate the signed artifacts. The script canonicalizes the fixtures, derives a random HMAC key for the core flow bundle, and emits the secrets as export statements. Capture the output in the current shell or write it to a file sourced only for the test session.
+   ```bash
+   eval "$(tests/recreate_signed_artifacts.sh)"
+   ```
+3. Run the signed test suite to confirm the regenerated artifacts validate end-to-end.
+   ```bash
+   SIGNED_TEST=1 make check
+   ```
+4. When finished, unset the exported secrets and secure the private key directory (the scripts enforce `chmod 700` for the directory and `chmod 400` for key files).
+
+If an alternate location for the private keys or fixtures is required, set `PRIVATE_KEY_DIR` or `FIX` before invoking the scripts.
+
 ### Development
 - Lint shell scripts:
 ```

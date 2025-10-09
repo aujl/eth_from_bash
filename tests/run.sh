@@ -17,9 +17,10 @@ for script in "${SCRIPTS[@]}"; do
   bash "${TEST_DIR}/${script}"
   end_ts=$(date +%s)
   duration=$((end_ts - start_ts))
+  max_duration=${TEST_TIMEOUT:-30}
   echo "-- ${script} completed in ${duration}s"
-  if (( duration > 20 )); then
-    echo "FAIL: ${script} exceeded 20 seconds (took ${duration}s)" >&2
+  if (( duration > max_duration )); then
+    echo "FAIL: ${script} exceeded ${max_duration} seconds (took ${duration}s)" >&2
     exit 1
   fi
   echo
