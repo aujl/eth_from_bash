@@ -27,7 +27,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq bc vim-common openssl perl python3 python3-pip python3-pycryptodome
-      - name: Run tests
+      - name: Run unsigned tests
+        if: github.event_name == 'push'
+        run: |
+          UNSIGNED_TEST=1 make check
+
+      - name: Run signed tests
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
         env:
           CORE_FLOW_FIXTURE_HMAC_KEY_B64: ${{ secrets.CORE_FLOW_FIXTURE_HMAC_KEY_B64 }}
           CORE_FLOW_FIXTURE_HMAC_B64: ${{ secrets.CORE_FLOW_FIXTURE_HMAC_B64 }}
@@ -36,3 +42,8 @@ jobs:
           SIGNED_TEST: "1"
         run: |
           make check
+
+      - name: Run unsigned tests (fork PR)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        run: |
+          UNSIGNED_TEST=1 make check
