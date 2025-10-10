@@ -6,7 +6,8 @@ MASK32=$((0xFFFFFFFF))
 ROT_HI=0
 ROT_LO=0
 STATE_BYTES=()
-readonly NIST_A3_200_HEX="$(printf 'a3%.0s' {1..200})"
+NIST_A3_200_HEX="$(printf 'a3%.0s' {1..200})"
+readonly NIST_A3_200_HEX
 
 ROUND_CONSTANTS_HEX=(
   0000000000000001
@@ -99,8 +100,8 @@ rotl64() {
 }
 
 keccak_f() {
-  local -n state_hi_ref=$1
-  local -n state_lo_ref=$2
+  local -n state_hi_ref="$1"
+  local -n state_lo_ref="$2"
   local round x y idx b_idx
   local -a c_hi=(0 0 0 0 0)
   local -a c_lo=(0 0 0 0 0)
@@ -168,9 +169,9 @@ keccak_f() {
 }
 
 xor_block_from_data() {
-  local -n state_hi_ref=$1
-  local -n state_lo_ref=$2
-  local -n bytes_ref=$3
+  local -n state_hi_ref="$1"
+  local -n state_lo_ref="$2"
+  local -n bytes_ref="$3"
   local start=$4
   local len=$5
   local i lane shift byte
@@ -187,9 +188,9 @@ xor_block_from_data() {
 }
 
 xor_block_array() {
-  local -n state_hi_ref=$1
-  local -n state_lo_ref=$2
-  local -n block_ref=$3
+  local -n state_hi_ref="$1"
+  local -n state_lo_ref="$2"
+  local -n block_ref="$3"
   local len=${#block_ref[@]}
   local i lane shift byte
   for ((i = 0; i < len; i++)); do
@@ -205,8 +206,8 @@ xor_block_array() {
 }
 
 state_to_bytes() {
-  local -n state_hi_ref=$1
-  local -n state_lo_ref=$2
+  local -n state_hi_ref="$1"
+  local -n state_lo_ref="$2"
   local rate=$3
   STATE_BYTES=()
   local lane offset byte_index byte
@@ -221,13 +222,13 @@ state_to_bytes() {
       else
         byte=$(((state_hi_ref[lane] >> (8 * (offset - 4))) & 0xFF))
       fi
-      STATE_BYTES+=(${byte})
+      STATE_BYTES+=("${byte}")
     done
   done
 }
 
 hex_to_bytes() {
-  local -n dest=$1
+  local -n dest="$1"
   local hex=${2:-}
   dest=()
   local len=${#hex}
@@ -248,7 +249,9 @@ keccak_digest() {
   local digest_size=$4
   local i
 
+# shellcheck disable=SC2034  # tracked through nameref helpers
   local -a state_hi=()
+# shellcheck disable=SC2034  # tracked through nameref helpers
   local -a state_lo=()
   for ((i = 0; i < 25; i++)); do
     state_hi[i]=0
@@ -305,6 +308,7 @@ keccak256_stream() {
   else
     hex=$(od -An -t x1 | tr -d ' \n')
   fi
+# shellcheck disable=SC2034  # populated via hex_to_bytes
   local -a data=()
   hex_to_bytes data "${hex}"
   keccak256_bytes data
@@ -312,6 +316,7 @@ keccak256_stream() {
 
 run_self_test() {
   local idx digest
+# shellcheck disable=SC2034  # populated via hex_to_bytes
   local -a msg=()
   for idx in "${!CANONICAL_VECTOR_NAMES[@]}"; do
     hex_to_bytes msg "${CANONICAL_VECTOR_INPUT_HEX[idx]}"
