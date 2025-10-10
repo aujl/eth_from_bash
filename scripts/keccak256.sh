@@ -100,8 +100,10 @@ rotl64() {
 }
 
 keccak_f() {
-  local -n state_hi_ref="$1"
-  local -n state_lo_ref="$2"
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_hi_ref=$1
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_lo_ref=$2
   local round x y idx b_idx
   local -a c_hi=(0 0 0 0 0)
   local -a c_lo=(0 0 0 0 0)
@@ -169,9 +171,12 @@ keccak_f() {
 }
 
 xor_block_from_data() {
-  local -n state_hi_ref="$1"
-  local -n state_lo_ref="$2"
-  local -n bytes_ref="$3"
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_hi_ref=$1
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_lo_ref=$2
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n bytes_ref=$3
   local start=$4
   local len=$5
   local i lane shift byte
@@ -188,9 +193,12 @@ xor_block_from_data() {
 }
 
 xor_block_array() {
-  local -n state_hi_ref="$1"
-  local -n state_lo_ref="$2"
-  local -n block_ref="$3"
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_hi_ref=$1
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_lo_ref=$2
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n block_ref=$3
   local len=${#block_ref[@]}
   local i lane shift byte
   for ((i = 0; i < len; i++)); do
@@ -206,8 +214,10 @@ xor_block_array() {
 }
 
 state_to_bytes() {
-  local -n state_hi_ref="$1"
-  local -n state_lo_ref="$2"
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_hi_ref=$1
+  # shellcheck disable=SC2178  # nameref points to caller-provided arrays
+  local -n state_lo_ref=$2
   local rate=$3
   STATE_BYTES=()
   local lane offset byte_index byte
@@ -254,7 +264,9 @@ keccak_digest() {
 # shellcheck disable=SC2034  # tracked through nameref helpers
   local -a state_lo=()
   for ((i = 0; i < 25; i++)); do
+    # shellcheck disable=SC2034  # mutated through namerefs in downstream calls
     state_hi[i]=0
+    # shellcheck disable=SC2034  # mutated through namerefs in downstream calls
     state_lo[i]=0
   done
 

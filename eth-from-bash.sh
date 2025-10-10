@@ -12,6 +12,42 @@ KECCAK_HELPER="${SCRIPT_DIR}/scripts/keccak256.sh"
 EIP55_HELPER="${SCRIPT_DIR}/scripts/eip55_checksum.sh"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
+hex_to_bits() {
+  local hex=${1:-}
+  local upper=${hex^^}
+  local -i i
+  local char
+  local result=""
+  for ((i = 0; i < ${#upper}; i++)); do
+    char=${upper:i:1}
+    case "${char}" in
+      0) result+=0000 ;;
+      1) result+=0001 ;;
+      2) result+=0010 ;;
+      3) result+=0011 ;;
+      4) result+=0100 ;;
+      5) result+=0101 ;;
+      6) result+=0110 ;;
+      7) result+=0111 ;;
+      8) result+=1000 ;;
+      9) result+=1001 ;;
+      A) result+=1010 ;;
+      B) result+=1011 ;;
+      C) result+=1100 ;;
+      D) result+=1101 ;;
+      E) result+=1110 ;;
+      F) result+=1111 ;;
+      "") ;;
+      *)
+        echo "Invalid hex character '${char}'" >&2
+        return 1
+        ;;
+    esac
+  done
+  printf '%s' "${result}"
+}
+
+
 ENT_HEX_ENV="${ENT_HEX-}"
 MNEMONIC_ENV="${MNEMONIC-}"
 
@@ -217,11 +253,7 @@ if [[ -n "${ENT_HEX_VALUE}" ]]; then
   CS_BITS="$(printf "%04s" "${CS_BITS_BIN}" | tr ' ' 0)"
 fi
 if [[ -n "${ENT_HEX_VALUE}" ]]; then
-  BIN_ENT="$(
-    printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | \
-    xxd -b -g 0 -c 16 | \
-    awk '{ for(i=2; i < NF; i++) printf "%s", $i }'
-  )"
+  BIN_ENT="$(hex_to_bits "${ENT_HEX_VALUE}")"
 fi
 
 if [[ -n "${ENT_HEX_VALUE}" ]]; then
