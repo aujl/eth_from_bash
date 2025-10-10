@@ -74,42 +74,21 @@ derive_with_openssl() {
   printf '%s' "${output}"
 }
 
-derive_with_python() {
-  python3 - "$mnemonic" "$passphrase" <<'PY'
-import sys
-import binascii
-import hashlib
-import unicodedata
-
-if len(sys.argv) != 3:
-    raise SystemExit("expected mnemonic and passphrase")
-
-mnemonic = unicodedata.normalize("NFKD", sys.argv[1])
-passphrase = unicodedata.normalize("NFKD", sys.argv[2])
-salt = "mnemonic" + passphrase
-seed = hashlib.pbkdf2_hmac("sha512", mnemonic.encode(), salt.encode(), 2048, dklen=64)
-print(binascii.hexlify(seed).decode())
-PY
-}
-
 openssl_supports_kdf() {
   openssl kdf -keylen 1 -kdfopt pass:x -kdfopt salt:y PBKDF2 >/dev/null 2>&1
 }
 
 seed_hex=""
-if openssl_supports_kdf; then
-  seed_hex="$(derive_with_openssl || true)"
+if ! openssl_supports_kdf; then
+  echo "OpenSSL PBKDF2 KDF support is required (OpenSSL 3.x)." >&2
+  exit 1
 fi
 
+seed_hex="$(derive_with_openssl || true)"
+
 if [[ -z "${seed_hex}" ]]; then
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "Unable to derive seed: openssl kdf unsupported and python3 missing" >&2
-    exit 1
-  fi
-  if ! seed_hex="$(derive_with_python)"; then
-    echo "Failed to derive seed with python fallback" >&2
-    exit 1
-  fi
+  echo "Failed to derive seed with OpenSSL PBKDF2." >&2
+  exit 1
 fi
 
 seed_hex="${seed_hex//[$'\n\r\t ']/}"

@@ -26,9 +26,9 @@ load_fixture_values() {
   SEED_VECTOR_EXPECTED_SEED="$(${jq_bin} -r '.seed_vector.expected_seed' "${CORE_FIXTURE}")"
   SEED_VECTOR_PASSPHRASE="$(${jq_bin} -r '.seed_vector.passphrase' "${CORE_FIXTURE}")"
 
-  PYTHON_PRIV_HEX="$(${jq_bin} -r '.python_helper.priv_hex' "${CORE_FIXTURE}")"
-  PYTHON_EXPECTED_COMP="$(${jq_bin} -r '.python_helper.compressed_hex' "${CORE_FIXTURE}")"
-  PYTHON_EXPECTED_UNCOMP="$(${jq_bin} -r '.python_helper.uncompressed_hex' "${CORE_FIXTURE}")"
+  SECP_HELPER_PRIV_HEX="$(${jq_bin} -r '.secp256k1_helper.priv_hex' "${CORE_FIXTURE}")"
+  SECP_HELPER_COMP="$(${jq_bin} -r '.secp256k1_helper.compressed_hex' "${CORE_FIXTURE}")"
+  SECP_HELPER_UNCOMP="$(${jq_bin} -r '.secp256k1_helper.uncompressed_hex' "${CORE_FIXTURE}")"
 
   ENTROPY_HEX_OVERRIDE="$(${jq_bin} -r '.env_overrides.entropy_hex' "${CORE_FIXTURE}")"
   ENTROPY_EXPECTED_MNEMONIC="$(${jq_bin} -r '.env_overrides.expected_mnemonic' "${CORE_FIXTURE}")"
@@ -39,7 +39,7 @@ load_fixture_values() {
 
   for value in \
     SEED_VECTOR_MNEMONIC SEED_VECTOR_EXPECTED_SEED SEED_VECTOR_PASSPHRASE \
-    PYTHON_PRIV_HEX PYTHON_EXPECTED_COMP PYTHON_EXPECTED_UNCOMP \
+    SECP_HELPER_PRIV_HEX SECP_HELPER_COMP SECP_HELPER_UNCOMP \
     ENTROPY_HEX_OVERRIDE ENTROPY_EXPECTED_MNEMONIC MNEMONIC_OVERRIDE_VALUE \
     MNEMONIC_OVERRIDE_EXPECTED_SEED INVALID_ENTROPY_VALUE INVALID_MNEMONIC_VALUE; do
     if [[ -z "${!value}" || "${!value}" == "null" ]]; then
@@ -65,26 +65,20 @@ verify_core_fixture_integrity() {
   ensure_secret_file_mode "${key_file}" "core flow HMAC key"
   ensure_secret_file_mode "${expected_file}" "core flow HMAC digest"
 
-  local expected_hex computed_hex
+  local expected_hex computed_hex canonical key_hex
   expected_hex="$(xxd -p -c 1000 "${expected_file}")"
+  canonical="$(jq -cS '.' "${CORE_FIXTURE}")"
+  key_hex="$(xxd -p "${key_file}" | tr -d '\n')"
 
-  computed_hex="$(
-    python3 - <<'PY' "${CORE_FIXTURE}" "${key_file}"
-import hashlib
-import hmac
-import json
-import pathlib
-import sys
+  if [[ -z "${canonical}" || -z "${key_hex}" ]]; then
+    echo "FAIL: Unable to canonicalize core flow fixture" >&2
+    exit 1
+  fi
 
-fixture = pathlib.Path(sys.argv[1])
-key_path = pathlib.Path(sys.argv[2])
-payload = json.loads(fixture.read_text())
-canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
-key = key_path.read_bytes()
-digest = hmac.new(key, canonical, hashlib.sha256).hexdigest()
-print(digest)
-PY
-  )"
+  read -r computed_hex _ < <(
+    printf '%s' "${canonical}" \
+      | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${key_hex}" -r
+  )
 
   expected_hex="${expected_hex//[$'\n\r']/}"
   computed_hex="${computed_hex//[$'\n\r']/}"
@@ -120,11 +114,11 @@ run_seed_vector() {
 run_secp_helper_pub() {
   local helper="${ROOT_DIR}/scripts/secp256k1_pub.sh"
   local comp uncomp
-  if ! read -r comp uncomp <<<"$("${helper}" pub --priv-hex "${PYTHON_PRIV_HEX}")"; then
+  if ! read -r comp uncomp <<<"$("${helper}" pub --priv-hex "${SECP_HELPER_PRIV_HEX}")"; then
     echo "FAIL: secp256k1 helper execution" >&2
     exit 1
   fi
-  if [[ "${comp}" == "${PYTHON_EXPECTED_COMP}" && "${uncomp}" == "${PYTHON_EXPECTED_UNCOMP}" ]]; then
+  if [[ "${comp}" == "${SECP_HELPER_COMP}" && "${uncomp}" == "${SECP_HELPER_UNCOMP}" ]]; then
     pass "secp256k1 helper derivation"
   else
     echo "FAIL: secp256k1 helper derivation" >&2

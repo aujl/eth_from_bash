@@ -10,7 +10,6 @@ BIP39_HELPER="${SCRIPT_DIR}/scripts/bip39_seed.sh"
 SECP256K1_HELPER="${SCRIPT_DIR}/scripts/secp256k1_pub.sh"
 KECCAK_HELPER="${SCRIPT_DIR}/scripts/keccak256.sh"
 EIP55_HELPER="${SCRIPT_DIR}/scripts/eip55_checksum.sh"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 hex_to_bits() {
   local hex=${1:-}
@@ -50,11 +49,6 @@ hex_to_bits() {
 
 ENT_HEX_ENV="${ENT_HEX-}"
 MNEMONIC_ENV="${MNEMONIC-}"
-
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-  echo "Python interpreter '${PYTHON_BIN}' not found" >&2
-  exit 1
-fi
 
 if [[ ! -x "${BIP39_HELPER}" ]]; then
   echo "Seed helper '${BIP39_HELPER}' not executable" >&2
@@ -146,7 +140,7 @@ PASSPHRASE="${*:-}"
 [[ "$(wc -l < "${WLIST}")" -eq 2048 ]] || { echo "wordlist must have 2048 lines" >&2; exit 1; }
 
 # check dependencies
-for cmd in xxd bc awk sha256sum openssl python3; do
+for cmd in xxd bc awk sha256sum openssl; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 
