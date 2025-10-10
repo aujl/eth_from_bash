@@ -7,6 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_HELPER="${SCRIPT_DIR}/scripts/derive_seed_and_pub.py"
+BIP39_HELPER="${SCRIPT_DIR}/scripts/bip39_seed.sh"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 ENT_HEX_ENV="${ENT_HEX-}"
@@ -14,6 +15,11 @@ MNEMONIC_ENV="${MNEMONIC-}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Python interpreter '${PYTHON_BIN}' not found" >&2
+  exit 1
+fi
+
+if [[ ! -x "${BIP39_HELPER}" ]]; then
+  echo "Seed helper '${BIP39_HELPER}' not executable" >&2
   exit 1
 fi
 
@@ -255,9 +261,9 @@ else
   MNEMONIC="${USER_MNEMONIC}"
 fi
 
-# Derive seed using Python helper (PBKDF2-HMAC-SHA512)
+# Derive seed using Bash helper (PBKDF2-HMAC-SHA512)
 SEED_HEX="$(
-  "${PYTHON_BIN}" "${PYTHON_HELPER}" seed \
+  "${BIP39_HELPER}" \
     --mnemonic "${MNEMONIC}" \
     --passphrase "${PASSPHRASE}"
 )"

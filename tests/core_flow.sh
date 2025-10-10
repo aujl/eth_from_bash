@@ -98,15 +98,23 @@ PY
 }
 
 run_seed_vector() {
+  local helper="${ROOT_DIR}/scripts/bip39_seed.sh"
+  local helper_seed
+  helper_seed=$("${helper}" --mnemonic "${SEED_VECTOR_MNEMONIC}" --passphrase "${SEED_VECTOR_PASSPHRASE}")
+  if [[ "${helper_seed}" != "${SEED_VECTOR_EXPECTED_SEED}" ]]; then
+    echo "FAIL: BIP39 PBKDF2 seed vector (helper)" >&2
+    exit 1
+  fi
+
   local out seed
   out=$(bash "${SCRIPT}" -q --include-seed --no-address --mnemonic "${SEED_VECTOR_MNEMONIC}" "${WLIST}" "${SEED_VECTOR_PASSPHRASE}")
   seed=$(jq -r .seed <<<"${out}")
-  if [[ "${seed}" == "${SEED_VECTOR_EXPECTED_SEED}" ]]; then
-    pass "BIP39 PBKDF2 seed vector"
-  else
-    echo "FAIL: BIP39 PBKDF2 seed vector" >&2
+  if [[ "${seed}" != "${SEED_VECTOR_EXPECTED_SEED}" ]]; then
+    echo "FAIL: BIP39 PBKDF2 seed vector (cli)" >&2
     exit 1
   fi
+
+  pass "BIP39 PBKDF2 seed vector"
 }
 
 run_python_helper_pub() {

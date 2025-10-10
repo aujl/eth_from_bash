@@ -4,7 +4,6 @@
 import argparse
 import binascii
 import sys
-from hashlib import pbkdf2_hmac
 from typing import Optional, Tuple
 
 _P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
@@ -59,13 +58,6 @@ def _scalar_mult(k: int, point: Point) -> Point:
     if result is None:
         raise SystemExit("Scalar multiplication resulted in point at infinity")
     return result
-
-
-def derive_seed(mnemonic: str, passphrase: str) -> str:
-    """Derive the BIP-39 seed using PBKDF2-HMAC-SHA512."""
-    salt = "mnemonic" + passphrase
-    seed = pbkdf2_hmac("sha512", mnemonic.encode("utf-8"), salt.encode("utf-8"), 2048, dklen=64)
-    return seed.hex()
 
 
 def derive_pubkeys(priv_hex: str) -> tuple[str, str]:
@@ -132,10 +124,6 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    seed_parser = subparsers.add_parser("seed", help="Derive BIP-39 seed")
-    seed_parser.add_argument("--mnemonic", required=True, help="Mnemonic phrase")
-    seed_parser.add_argument("--passphrase", default="", help="Optional passphrase")
-
     pub_parser = subparsers.add_parser("pub", help="Derive secp256k1 pubkeys from private key hex")
     pub_parser.add_argument("--priv-hex", required=True, help="Private key hex (64 chars)")
 
@@ -144,11 +132,6 @@ def main(argv: list[str]) -> int:
     )
 
     args = parser.parse_args(argv)
-
-    if args.command == "seed":
-        seed_hex = derive_seed(args.mnemonic, args.passphrase)
-        print(seed_hex)
-        return 0
 
     if args.command == "pub":
         compressed, uncompressed = derive_pubkeys(args.priv_hex)
