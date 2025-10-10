@@ -14,13 +14,7 @@ KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
 current_mode() {
-  python3 - <<'PY' "$1"
-import os
-import sys
-path = sys.argv[1]
-mode = os.stat(path).st_mode & 0o777
-print(oct(mode)[2:])
-PY
+  stat -c '%a' "$1"
 }
 
 for path in "${CORE_JSON}" "${KECCAK_JSON}" "${SECP_JSON}" "${KECCAK_PRIV}" "${SECP_PRIV}"; do
@@ -36,6 +30,10 @@ for path in "${CORE_JSON}" "${KECCAK_JSON}" "${SECP_JSON}" "${KECCAK_PRIV}" "${S
     fi
   fi
 done
+
+b64() {
+  base64 | tr -d '\n'
+}
 
 cleanup_files=()
 cleanup() {
@@ -58,24 +56,18 @@ mktemp_file() {
 TMP_KEY="$(mktemp_file)"
 openssl rand -out "${TMP_KEY}" 32
 
-CORE_FLOW_FIXTURE_HMAC_B64="$(python3 - <<'PY' "${CORE_JSON}" "${TMP_KEY}"
-import base64
-import hashlib
-import hmac
-import json
-import pathlib
-import sys
-fixture = pathlib.Path(sys.argv[1])
-key_path = pathlib.Path(sys.argv[2])
-canonical = json.dumps(json.loads(fixture.read_text()), separators=(",", ":"), sort_keys=True).encode()
-digest = hmac.new(key_path.read_bytes(), canonical, hashlib.sha256).digest()
-print(base64.b64encode(digest).decode())
-PY
-)"
+canonical="$(jq -cS '.' "${CORE_JSON}")"
+key_hex="$(xxd -p "${TMP_KEY}" | tr -d '\n')"
+if [[ -z "${canonical}" || -z "${key_hex}" ]]; then
+  echo "Unable to prepare canonical fixture or key material" >&2
+  exit 1
+fi
 
-b64() {
-  base64 | tr -d '\n'
-}
+CORE_FLOW_FIXTURE_HMAC_B64="$(
+  printf '%s' "${canonical}" \
+    | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${key_hex}" -binary \
+    | b64
+)"
 
 CORE_FLOW_FIXTURE_HMAC_KEY_B64="$(b64 <"${TMP_KEY}")"
 

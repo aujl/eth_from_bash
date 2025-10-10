@@ -22,16 +22,15 @@ auditable, and reproducible, follow these conventions:
 ## Layout
 - `eth-from-bash.sh`: Main CLI that derives Ethereum keys/address from a mnemonic.
 - `scripts/`: Helper scripts used by Make and tests (keccak detection, EIP‑55 helpers,
-  dependency checks, venv setup, lint entrypoint).
+  dependency checks, lint entrypoint).
 - `tests/run.sh`: Test harness that shells out to the scripts/utilities.
-- `Makefile`: Entry points for `check`, `venv`, `lint`.
+- `Makefile`: Entry points for `check`, `deps`, `lint`.
 
 ## Common Tasks
 - Bootstrap CLI dependencies first: run `make deps` and install any missing
-  packages (e.g., `bc`, `xxd`, `jq`, `openssl`, `python3`) using the system
+  packages (e.g., `bc`, `xxd`, `jq`, `openssl`) using the system
   package manager when prompted.
 - Run tests: `make check`
-- Prepare Python helpers if missing: `make venv`.
 - Lint shell: `make lint` (requires `shellcheck`)
 
 ### Signed test workflow

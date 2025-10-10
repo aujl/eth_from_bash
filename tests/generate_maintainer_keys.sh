@@ -19,13 +19,7 @@ SECP_PRIV="${PRIVATE_KEY_DIR}/secp256k1_vectors_priv.pem"
 SECP_PUB="${FIXTURES_DIR}/secp256k1_vectors_pub.pem"
 
 current_mode() {
-  python3 - <<'PY' "$1"
-import os
-import sys
-path = sys.argv[1]
-mode = os.stat(path).st_mode & 0o777
-print(oct(mode)[2:])
-PY
+  stat -c '%a' "$1"
 }
 
 ensure_private_key() {

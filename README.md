@@ -1,6 +1,6 @@
 # Ethereum Keys from Bash
 
-Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using plain Bash with OpenSSL and Python for Keccak.
+Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using plain Bash with OpenSSL and the bundled helper scripts for Keccak and elliptic curve operations.
 
 This repo includes:
 - `eth-from-bash.sh`: BIP‑39 seed (PBKDF2), BIP‑32 (secp256k1) derivation for `m/44'/60'/0'/0/0`, public key → Ethereum address (Keccak‑256 + EIP‑55).
@@ -17,12 +17,11 @@ This repo includes:
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
-- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `openssl` (v3+).
-- Python 3 (stdlib only) for deterministic Keccak-256 and elliptic curve helpers.
+- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `jq`, `openssl` (v3+).
 
 On Debian/Ubuntu:
 ```
-sudo apt update && sudo apt install -y jq bc vim-common openssl python3 python3-pip
+sudo apt update && sudo apt install -y jq bc vim-common openssl
 ```
 
 ## Usage
@@ -103,15 +102,12 @@ If an alternate location for the private keys or fixtures is required, set `PRIV
 ```
 make lint
 ```
-- Ensure dependencies and venv:
+- Ensure CLI dependencies are available:
 ```
 make deps
-make venv
 ```
 
-### Scripts
-- `scripts/check_deps.sh`: Verify CLI dependencies.
-- `scripts/ensure_venv.sh`: Create `.venv` for local tooling.
+- `scripts/check_deps.sh`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `openssl`, `awk`, `sha256sum`).
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
