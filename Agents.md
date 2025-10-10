@@ -27,6 +27,9 @@ auditable, and reproducible, follow these conventions:
 - `Makefile`: Entry points for `check`, `venv`, `lint`.
 
 ## Common Tasks
+- Bootstrap CLI dependencies first: run `make deps` and install any missing
+  packages (e.g., `bc`, `xxd`, `jq`, `openssl`, `python3`) using the system
+  package manager when prompted.
 - Run tests: `make check`
 - Prepare Python helpers if missing: `make venv`.
 - Lint shell: `make lint` (requires `shellcheck`)

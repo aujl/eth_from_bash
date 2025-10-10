@@ -113,6 +113,7 @@ make venv
 - `scripts/check_deps.sh`: Verify CLI dependencies.
 - `scripts/ensure_venv.sh`: Create `.venv` for local tooling.
 - `scripts/keccak_primitives.py`: Constant-time Keccak-256 helpers and CLI.
+- `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/has_keccak.py`: Sanity-check the internal Keccak primitive.
 - `scripts/eip55_recompute.py`: Recompute EIP‑55 checksum for an address.
 - `scripts/keccak256.py`: Keccak‑256 of stdin bytes to hex via internal primitive.
@@ -126,6 +127,6 @@ Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repo
 - Consider air‑gapped usage and review the code before production use.
 To audit only the secp256k1 primitive helper:
 ```
-python3 scripts/derive_seed_and_pub.py selftest
+scripts/secp256k1_pub.sh selftest
 ```
 

@@ -6,8 +6,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_HELPER="${SCRIPT_DIR}/scripts/derive_seed_and_pub.py"
 BIP39_HELPER="${SCRIPT_DIR}/scripts/bip39_seed.sh"
+SECP256K1_HELPER="${SCRIPT_DIR}/scripts/secp256k1_pub.sh"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 ENT_HEX_ENV="${ENT_HEX-}"
@@ -20,6 +20,11 @@ fi
 
 if [[ ! -x "${BIP39_HELPER}" ]]; then
   echo "Seed helper '${BIP39_HELPER}' not executable" >&2
+  exit 1
+fi
+
+if [[ ! -x "${SECP256K1_HELPER}" ]]; then
+  echo "secp256k1 helper '${SECP256K1_HELPER}' not executable" >&2
   exit 1
 fi
 
@@ -307,7 +312,7 @@ derive_hardened(){
 pub_compressed_from_priv_hex(){
   local khex="$1"
   local comp
-  read -r comp _ <<<"$("${PYTHON_BIN}" "${PYTHON_HELPER}" pub --priv-hex "${khex}")"
+  read -r comp _ <<<"$("${SECP256K1_HELPER}" pub --priv-hex "${khex}")"
   printf "%s" "${comp}"
 }
 
@@ -371,7 +376,7 @@ debug "PK_HEX k : ${k} "
 
 ADDR_EIP55="0x"
 if [[ "${NO_ADDRESS}" -eq 0 ]]; then
-  read -r PUB_COMP_HEX PUB_UNCOMP_HEX <<<"$("${PYTHON_BIN}" "${PYTHON_HELPER}" pub --priv-hex "${PRIV_HEX}")"
+  read -r PUB_COMP_HEX PUB_UNCOMP_HEX <<<"$("${SECP256K1_HELPER}" pub --priv-hex "${PRIV_HEX}")"
   debug "PUB_COMP_HEX: ${PUB_COMP_HEX}"
   PUB_XY_HEX="${PUB_UNCOMP_HEX:2}"
   debug "PUB_XY_HEX: ${PUB_XY_HEX}"
