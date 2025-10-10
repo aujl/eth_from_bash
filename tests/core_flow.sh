@@ -117,15 +117,17 @@ run_seed_vector() {
   pass "BIP39 PBKDF2 seed vector"
 }
 
-run_python_helper_pub() {
-  local helper="${ROOT_DIR}/scripts/derive_seed_and_pub.py"
-  local out comp uncomp
-  out=$(python3 "${helper}" pub --priv-hex "${PYTHON_PRIV_HEX}")
-  read -r comp uncomp <<<"${out}"
+run_secp_helper_pub() {
+  local helper="${ROOT_DIR}/scripts/secp256k1_pub.sh"
+  local comp uncomp
+  if ! read -r comp uncomp <<<"$("${helper}" pub --priv-hex "${PYTHON_PRIV_HEX}")"; then
+    echo "FAIL: secp256k1 helper execution" >&2
+    exit 1
+  fi
   if [[ "${comp}" == "${PYTHON_EXPECTED_COMP}" && "${uncomp}" == "${PYTHON_EXPECTED_UNCOMP}" ]]; then
-    pass "Python helper secp256k1 derivation"
+    pass "secp256k1 helper derivation"
   else
-    echo "FAIL: Python helper secp256k1 derivation" >&2
+    echo "FAIL: secp256k1 helper derivation" >&2
     exit 1
   fi
 }
@@ -231,7 +233,7 @@ main() {
   load_fixture_values
   verify_core_fixture_integrity
   run_seed_vector
-  run_python_helper_pub
+  run_secp_helper_pub
   run_mnemonic_checksum
   run_env_entropy_override
   run_env_entropy_invalid
