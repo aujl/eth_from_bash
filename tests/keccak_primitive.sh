@@ -7,12 +7,13 @@ source "${TESTS_DIR}/common.sh"
 # shellcheck source=tests/load_secrets.sh
 source "${TESTS_DIR}/load_secrets.sh"
 
-KECCAK_SCRIPT="${ROOT_DIR}/scripts/keccak_primitives.py"
+KECCAK_SCRIPT="${ROOT_DIR}/scripts/keccak256.sh"
+EIP55_SCRIPT="${ROOT_DIR}/scripts/eip55_checksum.sh"
 VECTORS_FILE="${ROOT_DIR}/tests/fixtures/keccak_vectors.json"
 REFERENCE_PUB="${ROOT_DIR}/tests/fixtures/keccak_reference_pub.pem"
 
 run_keccak_self_test() {
-  if "${PYTHON_BIN}" "${KECCAK_SCRIPT}" self-test >/dev/null; then
+  if "${KECCAK_SCRIPT}" self-test >/dev/null; then
     pass "Keccak primitive internal self-test"
   else
     echo "FAIL: Keccak primitive internal self-test" >&2
@@ -22,8 +23,8 @@ run_keccak_self_test() {
 
 run_cli_digests() {
   local empty abc
-  empty=$(printf '' | "${PYTHON_BIN}" "${KECCAK_SCRIPT}" keccak256-hex)
-  abc=$(printf 'abc' | "${PYTHON_BIN}" "${KECCAK_SCRIPT}" keccak256-hex)
+  empty=$(printf '' | "${KECCAK_SCRIPT}" keccak256-hex)
+  abc=$(printf 'abc' | "${KECCAK_SCRIPT}" keccak256-hex)
   if [[ "${empty}" == "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" ]]; then
     pass "Keccak-256 hex digest (empty string)"
   else
@@ -42,7 +43,7 @@ run_cli_eip55() {
   local out addr recomputed
   out=$(bash "${SCRIPT}" -q --mnemonic "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" "${WLIST}")
   addr=$(jq -r .address <<<"${out}")
-  recomputed=$("${PYTHON_BIN}" "${ROOT_DIR}/scripts/eip55_recompute.py" "${addr}")
+  recomputed=$("${EIP55_SCRIPT}" "${addr}")
   if [[ "${recomputed}" == "${addr}" ]]; then
     pass "EIP-55 checksum matches"
   else
@@ -52,26 +53,12 @@ run_cli_eip55() {
 }
 
 verify_vectors_drift() {
-  if ! "${PYTHON_BIN}" - <<'PY' "${KECCAK_SCRIPT}" "${VECTORS_FILE}"; then
-import json
-import subprocess
-import sys
-from pathlib import Path
-
-script = Path(sys.argv[1])
-fixture_path = Path(sys.argv[2])
-regen = subprocess.check_output([sys.executable, str(script), "vectors"], text=True).strip()
-fixture_text = fixture_path.read_text().strip()
-canonical = json.dumps(json.loads(fixture_text), separators=(",", ":"), sort_keys=True)
-if regen != canonical:
-    print("Regenerated vectors diverge from fixture", file=sys.stderr)
-    import difflib
-    diff = difflib.unified_diff([canonical + "\n"], [fixture_text + "\n"], fromfile="regen", tofile=str(fixture_path))
-    for line in diff:
-        sys.stderr.write(line)
-    sys.exit(1)
-PY
+  local regen fixture
+  regen=$("${KECCAK_SCRIPT}" vectors)
+  fixture="$(<"${VECTORS_FILE}")"
+  if [[ "${regen}" != "${fixture}" ]]; then
     echo "FAIL: Keccak vector fixture drift" >&2
+    diff -u <(printf '%s\n' "${regen}") <(printf '%s\n' "${fixture}") || true
     exit 1
   fi
   pass "Keccak vector fixture up-to-date"

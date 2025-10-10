@@ -112,14 +112,12 @@ make venv
 ### Scripts
 - `scripts/check_deps.sh`: Verify CLI dependencies.
 - `scripts/ensure_venv.sh`: Create `.venv` for local tooling.
-- `scripts/keccak_primitives.py`: Constant-time Keccak-256 helpers and CLI.
+- `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
-- `scripts/has_keccak.py`: Sanity-check the internal Keccak primitive.
-- `scripts/eip55_recompute.py`: Recompute EIP‑55 checksum for an address.
-- `scripts/keccak256.py`: Keccak‑256 of stdin bytes to hex via internal primitive.
+- `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
 
 ## Notes on Keccak vs SHA‑3
-Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, pure-Python Keccak-256 implementation in `scripts/keccak_primitives.py`, so no external cryptography packages are required.
+Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, Bash-based Keccak-256 implementation in `scripts/keccak256.sh`, so no external cryptography packages are required.
 
 ## Security
 - This is a demo/reference script. Do not use on untrusted machines.
