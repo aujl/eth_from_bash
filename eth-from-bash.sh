@@ -8,7 +8,45 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIP39_HELPER="${SCRIPT_DIR}/scripts/bip39_seed.sh"
 SECP256K1_HELPER="${SCRIPT_DIR}/scripts/secp256k1_pub.sh"
+KECCAK_HELPER="${SCRIPT_DIR}/scripts/keccak256.sh"
+EIP55_HELPER="${SCRIPT_DIR}/scripts/eip55_checksum.sh"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+hex_to_bits() {
+  local hex=${1:-}
+  local upper=${hex^^}
+  local -i i
+  local char
+  local result=""
+  for ((i = 0; i < ${#upper}; i++)); do
+    char=${upper:i:1}
+    case "${char}" in
+      0) result+=0000 ;;
+      1) result+=0001 ;;
+      2) result+=0010 ;;
+      3) result+=0011 ;;
+      4) result+=0100 ;;
+      5) result+=0101 ;;
+      6) result+=0110 ;;
+      7) result+=0111 ;;
+      8) result+=1000 ;;
+      9) result+=1001 ;;
+      A) result+=1010 ;;
+      B) result+=1011 ;;
+      C) result+=1100 ;;
+      D) result+=1101 ;;
+      E) result+=1110 ;;
+      F) result+=1111 ;;
+      "") ;;
+      *)
+        echo "Invalid hex character '${char}'" >&2
+        return 1
+        ;;
+    esac
+  done
+  printf '%s' "${result}"
+}
+
 
 ENT_HEX_ENV="${ENT_HEX-}"
 MNEMONIC_ENV="${MNEMONIC-}"
@@ -25,6 +63,16 @@ fi
 
 if [[ ! -x "${SECP256K1_HELPER}" ]]; then
   echo "secp256k1 helper '${SECP256K1_HELPER}' not executable" >&2
+  exit 1
+fi
+
+if [[ ! -x "${KECCAK_HELPER}" ]]; then
+  echo "Keccak helper '${KECCAK_HELPER}' not executable" >&2
+  exit 1
+fi
+
+if [[ ! -x "${EIP55_HELPER}" ]]; then
+  echo "EIP-55 helper '${EIP55_HELPER}' not executable" >&2
   exit 1
 fi
 
@@ -205,11 +253,7 @@ if [[ -n "${ENT_HEX_VALUE}" ]]; then
   CS_BITS="$(printf "%04s" "${CS_BITS_BIN}" | tr ' ' 0)"
 fi
 if [[ -n "${ENT_HEX_VALUE}" ]]; then
-  BIN_ENT="$(
-    printf "%s" "${ENT_HEX_VALUE}" | xxd -r -p | \
-    xxd -b -g 0 -c 16 | \
-    awk '{ for(i=2; i < NF; i++) printf "%s", $i }'
-  )"
+  BIN_ENT="$(hex_to_bits "${ENT_HEX_VALUE}")"
 fi
 
 if [[ -n "${ENT_HEX_VALUE}" ]]; then
@@ -383,11 +427,7 @@ if [[ "${NO_ADDRESS}" -eq 0 ]]; then
 fi
 
 eth_keccak256_hex(){
-  if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-    echo "ERROR: python interpreter '${PYTHON_BIN}' unavailable for Keccak" >&2
-    exit 1
-  fi
-  "${PYTHON_BIN}" "${SCRIPT_DIR}/scripts/keccak_primitives.py" keccak256-hex
+  "${KECCAK_HELPER}" keccak256-hex
 }
 
 if [[ "${NO_ADDRESS}" -eq 0 ]]; then
@@ -395,21 +435,10 @@ if [[ "${NO_ADDRESS}" -eq 0 ]]; then
   HASH="$(printf "%s" "${PUB_XY_HEX}" | xxd -r -p | eth_keccak256_hex)"
   ADDR_HEX="${HASH:24}"
   ADDR_LC="${ADDR_HEX,,}"
-# EIP-55 checksum: keccak256 of ASCII lowercase hex string
-H2="$(printf "%s" "${ADDR_LC}" | eth_keccak256_hex)"
-debug "EIP55 base: ${ADDR_LC}"
-debug "EIP55 h:    ${H2}"
-  CHK=""
-  for i in $(seq 0 39); do
-    ch="${ADDR_LC:${i}:1}"
-    hd="${H2:${i}:1}"
-    if [[ "${ch}" =~ [a-f] ]] && (( 0x${hd} >= 8 )); then
-      CHK+="${ch^^}"
-    else
-      CHK+="${ch}"
-    fi
-  done
-  ADDR_EIP55="0x${CHK}"
+  H2="$(printf "%s" "${ADDR_LC}" | eth_keccak256_hex)"
+  debug "EIP55 base: ${ADDR_LC}"
+  debug "EIP55 h:    ${H2}"
+  ADDR_EIP55="$("${EIP55_HELPER}" "${ADDR_HEX}")"
 fi
 
 if [[ "${INCLUDE_SEED}" -eq 1 ]]; then
