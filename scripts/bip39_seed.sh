@@ -56,33 +56,66 @@ if ! command -v openssl >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v xxd >/dev/null 2>&1; then
-  echo "xxd command not found" >&2
-  exit 1
+derive_with_openssl() {
+  local salt="mnemonic${passphrase}"
+  local output
+  if ! output="$(
+    openssl kdf -keylen 64 \
+      -kdfopt digest:SHA512 \
+      -kdfopt iter:2048 \
+      -kdfopt "pass:${mnemonic}" \
+      -kdfopt "salt:${salt}" \
+      PBKDF2 2>/dev/null
+  )"; then
+    return 1
+  fi
+  output="${output//[$'\n\r\t ']/}"
+  output="${output//:/}"
+  printf '%s' "${output}"
+}
+
+derive_with_python() {
+  python3 - "$mnemonic" "$passphrase" <<'PY'
+import sys
+import binascii
+import hashlib
+import unicodedata
+
+if len(sys.argv) != 3:
+    raise SystemExit("expected mnemonic and passphrase")
+
+mnemonic = unicodedata.normalize("NFKD", sys.argv[1])
+passphrase = unicodedata.normalize("NFKD", sys.argv[2])
+salt = "mnemonic" + passphrase
+seed = hashlib.pbkdf2_hmac("sha512", mnemonic.encode(), salt.encode(), 2048, dklen=64)
+print(binascii.hexlify(seed).decode())
+PY
+}
+
+openssl_supports_kdf() {
+  openssl kdf -keylen 1 -kdfopt pass:x -kdfopt salt:y PBKDF2 >/dev/null 2>&1
+}
+
+seed_hex=""
+if openssl_supports_kdf; then
+  seed_hex="$(derive_with_openssl || true)"
 fi
 
-salt="mnemonic${passphrase}"
-
-seed_hex="$(
-  openssl kdf -binary -keylen 64 \
-    -kdfopt digest:SHA512 \
-    -kdfopt iter:2048 \
-    -kdfopt kdf:PBKDF2 \
-    -kdfopt "pass:${mnemonic}" \
-    -kdfopt "salt:${salt}" \
-    2>/dev/null | \
-    xxd -p -c 1000
-)"
-
 if [[ -z "${seed_hex}" ]]; then
-  echo "Failed to derive seed with openssl" >&2
-  exit 1
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Unable to derive seed: openssl kdf unsupported and python3 missing" >&2
+    exit 1
+  fi
+  if ! seed_hex="$(derive_with_python)"; then
+    echo "Failed to derive seed with python fallback" >&2
+    exit 1
+  fi
 fi
 
 seed_hex="${seed_hex//[$'\n\r\t ']/}"
 
 if [[ ${#seed_hex} -ne 128 ]]; then
-  echo "Unexpected seed length from openssl" >&2
+  echo "Unexpected seed length" >&2
   exit 1
 fi
 
