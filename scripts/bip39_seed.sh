@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CRYPTO_KDF_HELPER="${SCRIPT_DIR}/crypto_kdf.py"
+
 usage() {
   cat <<'USAGE'
 Usage: bip39_seed.sh --mnemonic "<mnemonic>" [--passphrase "<passphrase>"]
 
-Derive a 64-byte BIP-39 seed using OpenSSL's PBKDF2 implementation.
+Derive a 64-byte BIP-39 seed using PBKDF2-HMAC-SHA512.
 Outputs lowercase hexadecimal without trailing whitespace.
 USAGE
 }
@@ -51,40 +54,22 @@ if [[ -z "${mnemonic}" ]]; then
   exit 2
 fi
 
-if ! command -v openssl >/dev/null 2>&1; then
-  echo "openssl command not found" >&2
+if [[ ! -x "${CRYPTO_KDF_HELPER}" ]]; then
+  echo "PBKDF2 helper '${CRYPTO_KDF_HELPER}' not executable" >&2
   exit 1
 fi
 
-derive_with_openssl() {
-  local salt="mnemonic${passphrase}"
-  local output
-  if ! output="$(
-    openssl kdf -keylen 64 \
-      -kdfopt digest:SHA512 \
-      -kdfopt iter:2048 \
-      -kdfopt "pass:${mnemonic}" \
-      -kdfopt "salt:${salt}" \
-      PBKDF2 2>/dev/null
-  )"; then
-    return 1
-  fi
-  output="${output//[$'\n\r\t ']/}"
-  output="${output//:/}"
-  printf '%s' "${output}"
-}
-
-openssl_supports_kdf() {
-  openssl kdf -keylen 1 -kdfopt pass:x -kdfopt salt:y PBKDF2 >/dev/null 2>&1
-}
-
-seed_hex=""
-if ! openssl_supports_kdf; then
-  echo "OpenSSL PBKDF2 KDF support is required (OpenSSL 3.x)." >&2
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 command not found" >&2
   exit 1
 fi
 
-seed_hex="$(derive_with_openssl || true)"
+seed_hex="$(
+  "${CRYPTO_KDF_HELPER}" pbkdf2 \
+    --mnemonic "${mnemonic}" \
+    --passphrase "${passphrase}" \
+    || true
+)"
 
 if [[ -z "${seed_hex}" ]]; then
   echo "Failed to derive seed with OpenSSL PBKDF2." >&2
