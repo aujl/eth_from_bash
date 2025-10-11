@@ -66,11 +66,38 @@ run_vectors() {
   pass "secp256k1 vectors verified"
 }
 
+check_edge_cases() {
+  local expected_comp="0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  local expected_uncomp="0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+  local comp uncomp
+  if ! read -r comp uncomp <<<"$("${SECP_HELPER}" pub --priv-hex 0000000000000000000000000000000000000000000000000000000000000001)"; then
+    echo "FAIL: helper refused generator scalar" >&2
+    exit 1
+  fi
+  if [[ "${comp}" != "${expected_comp}" || "${uncomp}" != "${expected_uncomp}" ]]; then
+    echo "FAIL: generator scalar mismatch" >&2
+    exit 1
+  fi
+
+  if "${SECP_HELPER}" pub --priv-hex 0000000000000000000000000000000000000000000000000000000000000000 >/dev/null 2>&1; then
+    echo "FAIL: zero scalar accepted" >&2
+    exit 1
+  fi
+
+  if "${SECP_HELPER}" pub --priv-hex ffffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141 >/dev/null 2>&1; then
+    echo "FAIL: order scalar accepted" >&2
+    exit 1
+  fi
+
+  pass "secp256k1 edge cases rejected"
+}
+
 main() {
   "${SECP_HELPER}" selftest >/dev/null
   pass "secp256k1 primitive self-test"
   verify_signature
   run_vectors
+  check_edge_cases
 }
 
 main "$@"
