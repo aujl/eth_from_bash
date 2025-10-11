@@ -2,9 +2,9 @@
 set -euo pipefail
 
 CURVE_ORDER="FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"
-ASN1_OFFSET=23
-COMPRESSED_LEN=33
-UNCOMPRESSED_LEN=65
+FIELD_PRIME="FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F"
+GEN_X="79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
+GEN_Y="483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"
 
 usage() {
   cat <<'USAGE'
@@ -20,23 +20,10 @@ err() {
   printf '%s\n' "$1" >&2
 }
 
-tmp_files=()
-cleanup() {
-  if (( ${#tmp_files[@]} > 0 )); then
-    rm -f "${tmp_files[@]}"
-  fi
-}
-trap cleanup EXIT
-
-make_tmp() {
-  local tmp
-  tmp="$(mktemp)"
-  tmp_files+=("${tmp}")
-  printf '%s\n' "${tmp}"
-}
-
 require_tools() {
-  for tool in openssl xxd; do
+  local -a required_tools=(bc)
+  local tool
+  for tool in "${required_tools[@]}"; do
     if ! command -v "${tool}" >/dev/null 2>&1; then
       err "Required tool '${tool}' not found"
       exit 1
@@ -59,34 +46,192 @@ validate_scalar() {
     err "Private key scalar out of range"
     return 1
   fi
-  printf '%s\n' "${candidate,,}"
+  printf '%s\n' "${upper,,}"
 }
 
-build_der() {
-  local priv_hex="$1"
-  local der_hex
-  der_hex="302e0201010420${priv_hex}a00706052b8104000a"
-  local der_file
-  der_file="$(make_tmp)"
-  printf '%s' "${der_hex}" | xxd -r -p >"${der_file}"
-  printf '%s\n' "${der_file}"
+decimal_to_hex() {
+  local decimal="$1"
+  bc <<<"obase=16;${decimal}" | tr -d ' \n'
 }
 
-extract_pub() {
-  local der_file="$1" form="$2" length="$3"
-  local pub_der raw_file err_file
-  pub_der="$(make_tmp)"
-  raw_file="$(make_tmp)"
-  err_file="$(make_tmp)"
+scalar_to_point() {
+  local scalar_hex="${1^^}"
+  local bc_output
+  if ! bc_output="$(bc <<BC
+scale=0
+ibase=16
+p=${FIELD_PRIME}
+g[0]=${GEN_X}
+g[1]=${GEN_Y}
+k=${scalar_hex}
+ibase=10
 
-  if ! openssl ec -inform DER -in "${der_file}" -pubout -conv_form "${form}" -outform DER >"${pub_der}" 2>"${err_file}"; then
-    cat "${err_file}" >&2 || true
-    err "openssl failed to derive public key"
-    exit 1
+define modp(x) {
+  auto r;
+  r = x % p;
+  if (r < 0) r += p;
+  return r;
+}
+
+define madd(a, b) {
+  return modp(a + b);
+}
+
+define msub(a, b) {
+  auto r;
+  r = a - b;
+  r = r % p;
+  if (r < 0) r += p;
+  return r;
+}
+
+define mmul(a, b) {
+  return modp(a * b);
+}
+
+define msqr(a) {
+  return modp(a * a);
+}
+
+define minv(a) {
+  auto t0, t1, r0, r1, q0, u0;
+  a = modp(a);
+  if (a == 0) return 0;
+  t0 = 0;
+  t1 = 1;
+  r0 = p;
+  r1 = a;
+  while (r1 != 0) {
+    q0 = r0 / r1;
+    u0 = t1;
+    t1 = t0 - q0 * t1;
+    t0 = u0;
+    u0 = r1;
+    r1 = r0 - q0 * r1;
+    r0 = u0;
+  }
+  if (r0 != 1) return 0;
+  while (t0 < 0) t0 += p;
+  return t0 % p;
+}
+
+define pdouble(px, py) {
+  auto s0, n0, d0;
+  if (py == 0) {
+    t[0] = 0;
+    t[1] = 0;
+    return 1;
+  }
+  n0 = mmul(3, msqr(px));
+  d0 = mmul(2, py);
+  d0 = minv(d0);
+  if (d0 == 0) {
+    t[0] = 0;
+    t[1] = 0;
+    return 1;
+  }
+  s0 = mmul(n0, d0);
+  t[0] = msub(msub(msqr(s0), px), px);
+  t[1] = msub(mmul(s0, msub(px, t[0])), py);
+  return 0;
+}
+
+define padd(ax, ay, bx, by) {
+  auto s0, d0;
+  if (ax == bx) {
+    if (madd(ay, by) == 0) {
+      t[0] = 0;
+      t[1] = 0;
+      return 1;
+    }
+    return pdouble(ax, ay);
+  }
+  d0 = msub(bx, ax);
+  d0 = minv(d0);
+  if (d0 == 0) {
+    t[0] = 0;
+    t[1] = 0;
+    return 1;
+  }
+  s0 = mmul(msub(by, ay), d0);
+  t[0] = msub(msub(msqr(s0), ax), bx);
+  t[1] = msub(mmul(s0, msub(ax, t[0])), ay);
+  return 0;
+}
+
+r[0] = 0;
+r[1] = 0;
+r[2] = 1;
+q[0] = g[0];
+q[1] = g[1];
+q[2] = 0;
+
+while (k > 0) {
+  if (k % 2 == 1) {
+    if (r[2] == 1) {
+      if (q[2] == 1) {
+        r[0] = 0;
+        r[1] = 0;
+        r[2] = 1;
+      } else {
+        r[0] = q[0];
+        r[1] = q[1];
+        r[2] = 0;
+      }
+    } else if (q[2] == 0) {
+      if (padd(r[0], r[1], q[0], q[1]) == 1) {
+        r[0] = 0;
+        r[1] = 0;
+        r[2] = 1;
+      } else {
+        r[0] = t[0];
+        r[1] = t[1];
+        r[2] = 0;
+      }
+    }
+  }
+
+  if (q[2] == 0) {
+    if (pdouble(q[0], q[1]) == 1) {
+      q[0] = 0;
+      q[1] = 0;
+      q[2] = 1;
+    } else {
+      q[0] = t[0];
+      q[1] = t[1];
+    }
+  }
+
+  k = k / 2;
+}
+
+if (r[2] == 1) {
+  print "INF\n";
+} else {
+  r[0];
+  r[1];
+}
+BC
+)"; then
+    err "Scalar multiplication failed"
+    return 1
   fi
 
-  openssl asn1parse -inform DER -in "${pub_der}" -offset "${ASN1_OFFSET}" -length "${length}" -out "${raw_file}" -noout >/dev/null
-  xxd -p -c 1000 "${raw_file}" | tr -d '\n'
+  bc_output="${bc_output//\\$'\n'/}"
+  mapfile -t coords <<<"${bc_output}"
+  if (( ${#coords[@]} != 2 )); then
+    err "Scalar multiplication produced invalid output"
+    return 1
+  fi
+
+  local x_dec="${coords[0]}"
+  local y_dec="${coords[1]}"
+  local x_hex
+  x_hex="$(decimal_to_hex "${x_dec}")"
+  local y_hex
+  y_hex="$(decimal_to_hex "${y_dec}")"
+
+  printf '%s %s\n' "${x_hex}" "${y_hex}"
 }
 
 derive_pubkeys() {
@@ -96,17 +241,32 @@ derive_pubkeys() {
   if ! priv_hex="$(validate_scalar "${priv_input}")"; then
     return 1
   fi
-  local der_file=""
-  if ! der_file="$(build_der "${priv_hex}")"; then
+
+  local point_output=""
+  if ! point_output="$(scalar_to_point "${priv_hex}")"; then
+    err "Failed to derive public key"
     return 1
   fi
-  local comp="" uncomp=""
-  if ! comp="$(extract_pub "${der_file}" compressed "${COMPRESSED_LEN}")"; then
-    return 1
+
+  local x_hex y_hex
+  read -r x_hex y_hex <<<"${point_output}"
+  x_hex="${x_hex^^}"
+  y_hex="${y_hex^^}"
+
+  x_hex="$(printf '%064s' "${x_hex}" | tr ' ' '0')"
+  y_hex="$(printf '%064s' "${y_hex}" | tr ' ' '0')"
+
+  local last_char="${y_hex: -1}"
+  local parity=$((16#${last_char}))
+  local prefix
+  if (( parity % 2 == 0 )); then
+    prefix="02"
+  else
+    prefix="03"
   fi
-  if ! uncomp="$(extract_pub "${der_file}" uncompressed "${UNCOMPRESSED_LEN}")"; then
-    return 1
-  fi
+
+  local comp="${prefix}${x_hex,,}"
+  local uncomp="04${x_hex,,}${y_hex,,}"
   printf '%s %s\n' "${comp}" "${uncomp}"
 }
 
