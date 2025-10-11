@@ -13,6 +13,9 @@ PRIVATE_KEY_DIR="${PRIVATE_KEY_DIR:-$HOME/.config/eth_from_bash/maintainer}"
 KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
+CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+CRYPTO_KDF="${ROOT_DIR}/scripts/crypto_kdf.py"
+
 current_mode() {
   stat -c '%a' "$1"
 }
@@ -54,25 +57,26 @@ mktemp_file() {
 }
 
 TMP_KEY="$(mktemp_file)"
-openssl rand -out "${TMP_KEY}" 32
+"${CRYPTO_SIGN}" random-bytes --count 32 --output raw >"${TMP_KEY}"
 
 canonical="$(jq -cS '.' "${CORE_JSON}")"
 key_hex="$(xxd -p "${TMP_KEY}" | tr -d '\n')"
-if [[ -z "${canonical}" || -z "${key_hex}" ]]; then
+canonical_hex="$(printf '%s' "${canonical}" | xxd -p | tr -d '\n')"
+if [[ -z "${canonical}" || -z "${key_hex}" || -z "${canonical_hex}" ]]; then
   echo "Unable to prepare canonical fixture or key material" >&2
   exit 1
 fi
 
 CORE_FLOW_FIXTURE_HMAC_B64="$(
-  printf '%s' "${canonical}" \
-    | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${key_hex}" -binary \
+  "${CRYPTO_KDF}" hmac-sha256 --key-hex "${key_hex}" --data-hex "${canonical_hex}" \
+    | xxd -r -p \
     | b64
 )"
 
 CORE_FLOW_FIXTURE_HMAC_KEY_B64="$(b64 <"${TMP_KEY}")"
 
-KECCAK_VECTOR_SIG_B64="$(openssl dgst -sha256 -sign "${KECCAK_PRIV}" -binary "${KECCAK_JSON}" | b64)"
-SECP256K1_VECTOR_SIG_B64="$(openssl dgst -sha256 -sign "${SECP_PRIV}" -binary "${SECP_JSON}" | b64)"
+KECCAK_VECTOR_SIG_B64="$("${CRYPTO_SIGN}" rsa-sign --key "${KECCAK_PRIV}" --message "${KECCAK_JSON}" --output base64)"
+SECP256K1_VECTOR_SIG_B64="$("${CRYPTO_SIGN}" ecdsa-sign --key "${SECP_PRIV}" --message "${SECP_JSON}" --output base64)"
 
 printf "export CORE_FLOW_FIXTURE_HMAC_KEY_B64='%s'\n" "${CORE_FLOW_FIXTURE_HMAC_KEY_B64}"
 printf "export CORE_FLOW_FIXTURE_HMAC_B64='%s'\n" "${CORE_FLOW_FIXTURE_HMAC_B64}"

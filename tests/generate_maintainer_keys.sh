@@ -18,21 +18,10 @@ KECCAK_PUB="${FIXTURES_DIR}/keccak_reference_pub.pem"
 SECP_PRIV="${PRIVATE_KEY_DIR}/secp256k1_vectors_priv.pem"
 SECP_PUB="${FIXTURES_DIR}/secp256k1_vectors_pub.pem"
 
+CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+
 current_mode() {
   stat -c '%a' "$1"
-}
-
-ensure_private_key() {
-  local key_path="$1"
-  local generator=("${@:2}")
-
-  if [[ -f "${key_path}" ]]; then
-    ensure_mode "${key_path}" 400 "private key"
-    return
-  fi
-
-  "${generator[@]}"
-  chmod 400 "${key_path}"
 }
 
 ensure_mode() {
@@ -57,13 +46,21 @@ ensure_mode() {
   fi
 }
 
-ensure_private_key "${KECCAK_PRIV}" \
-  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${KECCAK_PRIV}"
-openssl pkey -in "${KECCAK_PRIV}" -pubout -out "${KECCAK_PUB}"
+if [[ ! -f "${KECCAK_PRIV}" ]]; then
+  "${CRYPTO_SIGN}" rsa-generate --bits 2048 --private-out "${KECCAK_PRIV}" --public-out "${KECCAK_PUB}"
+else
+  ensure_mode "${KECCAK_PRIV}" 400 "private key"
+  "${CRYPTO_SIGN}" rsa-public --key "${KECCAK_PRIV}" --output "${KECCAK_PUB}"
+fi
+chmod 400 "${KECCAK_PRIV}"
 
-ensure_private_key "${SECP_PRIV}" \
-  openssl ecparam -name secp256k1 -genkey -noout -out "${SECP_PRIV}"
-openssl pkey -in "${SECP_PRIV}" -pubout -out "${SECP_PUB}"
+if [[ ! -f "${SECP_PRIV}" ]]; then
+  "${CRYPTO_SIGN}" ecdsa-generate --private-out "${SECP_PRIV}" --public-out "${SECP_PUB}"
+else
+  ensure_mode "${SECP_PRIV}" 400 "private key"
+  "${CRYPTO_SIGN}" ecdsa-public --key "${SECP_PRIV}" --output "${SECP_PUB}"
+fi
+chmod 400 "${SECP_PRIV}"
 
 ensure_mode "${KECCAK_PUB}" 444 "RSA public key"
 ensure_mode "${SECP_PUB}" 444 "secp256k1 public key"

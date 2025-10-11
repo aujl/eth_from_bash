@@ -11,6 +11,7 @@ KECCAK_SCRIPT="${ROOT_DIR}/scripts/keccak256.sh"
 EIP55_SCRIPT="${ROOT_DIR}/scripts/eip55_checksum.sh"
 VECTORS_FILE="${ROOT_DIR}/tests/fixtures/keccak_vectors.json"
 REFERENCE_PUB="${ROOT_DIR}/tests/fixtures/keccak_reference_pub.pem"
+CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
 
 run_keccak_self_test() {
   if "${KECCAK_SCRIPT}" self-test >/dev/null; then
@@ -77,7 +78,7 @@ verify_signature() {
 
   ensure_secret_file_mode "${sig_file}" "keccak fixture signature"
 
-  if openssl dgst -sha256 -verify "${REFERENCE_PUB}" -signature "${sig_file}" "${VECTORS_FILE}" >/dev/null 2>&1; then
+  if "${CRYPTO_SIGN}" rsa-verify --key "${REFERENCE_PUB}" --message "${VECTORS_FILE}" --signature "${sig_file}" >/dev/null; then
     pass "Keccak vector signature verified"
   else
     echo "FAIL: Keccak vector signature verification failed" >&2

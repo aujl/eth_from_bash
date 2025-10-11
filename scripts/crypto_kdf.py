@@ -49,6 +49,14 @@ def hmac_sha512_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def hmac_sha256_command(args: argparse.Namespace) -> int:
+    key_bytes = _decode_hex("key", args.key_hex)
+    data_bytes = _decode_hex("data", args.data_hex)
+    digest = hmac.new(key_bytes, data_bytes, hashlib.sha256).digest()
+    print(digest.hex())
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Internal cryptographic helpers for eth-from-bash",
@@ -79,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
     hmac_parser.add_argument("--key-hex", required=True, help="Hex-encoded key")
     hmac_parser.add_argument("--data-hex", required=True, help="Hex-encoded data")
     hmac_parser.set_defaults(func=hmac_sha512_command)
+
+    hmac256_parser = subparsers.add_parser(
+        "hmac-sha256", help="Compute HMAC-SHA256 over hex inputs"
+    )
+    hmac256_parser.add_argument("--key-hex", required=True, help="Hex-encoded key")
+    hmac256_parser.add_argument("--data-hex", required=True, help="Hex-encoded data")
+    hmac256_parser.set_defaults(func=hmac_sha256_command)
 
     return parser
 
