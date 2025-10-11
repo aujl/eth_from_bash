@@ -8,6 +8,7 @@ source "${TESTS_DIR}/common.sh"
 source "${TESTS_DIR}/load_secrets.sh"
 
 CORE_FIXTURE="${ROOT_DIR}/tests/fixtures/core_flow_vectors.json"
+CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
 
 load_fixture_values() {
   if [[ ! -f "${CORE_FIXTURE}" ]]; then
@@ -65,19 +66,18 @@ verify_core_fixture_integrity() {
   ensure_secret_file_mode "${key_file}" "core flow HMAC key"
   ensure_secret_file_mode "${expected_file}" "core flow HMAC digest"
 
-  local expected_hex computed_hex canonical key_hex
+  local expected_hex computed_hex canonical
   expected_hex="$(xxd -p -c 1000 "${expected_file}")"
   canonical="$(jq -cS '.' "${CORE_FIXTURE}")"
-  key_hex="$(xxd -p "${key_file}" | tr -d '\n')"
 
-  if [[ -z "${canonical}" || -z "${key_hex}" ]]; then
+  if [[ -z "${canonical}" ]]; then
     echo "FAIL: Unable to canonicalize core flow fixture" >&2
     exit 1
   fi
 
-  read -r computed_hex _ < <(
+  computed_hex=$(
     printf '%s' "${canonical}" \
-      | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${key_hex}" -r
+      | "${CRYPTO_SIGN}" hmac-sha256 --key "${key_file}" --message - --output hex
   )
 
   expected_hex="${expected_hex//[$'\n\r']/}"

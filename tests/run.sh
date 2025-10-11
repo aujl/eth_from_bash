@@ -8,6 +8,7 @@ source "${TEST_DIR}/load_secrets.sh"
 SCRIPTS=(
   load_secrets_mode.sh
   core_flow.sh
+  crypto_sign_regression.sh
   keccak_primitive.sh
   secp256k1_primitive.sh
 )

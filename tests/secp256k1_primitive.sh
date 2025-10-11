@@ -10,6 +10,7 @@ source "${TESTS_DIR}/load_secrets.sh"
 FIXTURE_JSON="${ROOT_DIR}/tests/fixtures/secp256k1_vectors.json"
 FIXTURE_PUB="${ROOT_DIR}/tests/fixtures/secp256k1_vectors_pub.pem"
 SECP_HELPER="${ROOT_DIR}/scripts/secp256k1_pub.sh"
+CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
 
 verify_signature() {
   local sig_file="${SECP256K1_VECTOR_SIG_B64_FILE-}"
@@ -24,7 +25,7 @@ verify_signature() {
 
   ensure_secret_file_mode "${sig_file}" "secp256k1 fixture signature"
 
-  if openssl dgst -sha256 -verify "${FIXTURE_PUB}" -signature "${sig_file}" "${FIXTURE_JSON}" >/dev/null 2>&1; then
+  if "${CRYPTO_SIGN}" ecdsa-verify --key "${FIXTURE_PUB}" --message "${FIXTURE_JSON}" --signature "${sig_file}" >/dev/null; then
     pass "secp256k1 vector signature verified"
   else
     echo "FAIL: secp256k1 vector signature verification failed" >&2
