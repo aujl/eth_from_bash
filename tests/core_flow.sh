@@ -209,12 +209,12 @@ run_env_mnemonic_invalid() {
 }
 
 run_master_il_guard() {
-  local real_openssl
-  real_openssl="$(command -v openssl)"
-  local path_override="${ROOT_DIR}/tests/fixtures:${PATH}"
-  if OPENSSL_REAL="${real_openssl}" \
+  local real_helper stub_helper
+  real_helper="${ROOT_DIR}/scripts/crypto_kdf.py"
+  stub_helper="${ROOT_DIR}/tests/fixtures/crypto_kdf_stub.sh"
+  if CRYPTO_KDF_REAL="${real_helper}" \
+    CRYPTO_KDF_HELPER="${stub_helper}" \
     ETH_FROM_BASH_TEST_SCENARIO="master_il_zero" \
-    PATH="${path_override}" \
     MNEMONIC="${SEED_VECTOR_MNEMONIC}" \
     bash "${SCRIPT}" -q --include-seed --no-address "${WLIST}" "${SEED_VECTOR_PASSPHRASE}" >/dev/null 2>&1; then
     echo "FAIL: master IL zero guard" >&2

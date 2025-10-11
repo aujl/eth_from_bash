@@ -6,11 +6,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIP39_HELPER="${SCRIPT_DIR}/scripts/bip39_seed.sh"
-CRYPTO_KDF_HELPER="${SCRIPT_DIR}/scripts/crypto_kdf.py"
-SECP256K1_HELPER="${SCRIPT_DIR}/scripts/secp256k1_pub.sh"
-KECCAK_HELPER="${SCRIPT_DIR}/scripts/keccak256.sh"
-EIP55_HELPER="${SCRIPT_DIR}/scripts/eip55_checksum.sh"
+BIP39_HELPER="${BIP39_HELPER:-${SCRIPT_DIR}/scripts/bip39_seed.sh}"
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${SCRIPT_DIR}/scripts/crypto_kdf.py}"
+SECP256K1_HELPER="${SECP256K1_HELPER:-${SCRIPT_DIR}/scripts/secp256k1_pub.sh}"
+KECCAK_HELPER="${KECCAK_HELPER:-${SCRIPT_DIR}/scripts/keccak256.sh}"
+EIP55_HELPER="${EIP55_HELPER:-${SCRIPT_DIR}/scripts/eip55_checksum.sh}"
 
 export BIP39_HELPER
 export CRYPTO_KDF_HELPER
