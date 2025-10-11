@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 # eth-from-bash-perl-keccak.sh
 # Like before, but uses libdigest-sha3-perl for the final Keccak / SHA3 step
-# deps: bash, xxd, bc, awk, sha256sum, openssl, Perl with Digest::SHA3
+# deps: bash, xxd, bc, awk, sha256sum, openssl, python3, Perl with Digest::SHA3
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIP39_HELPER="${SCRIPT_DIR}/scripts/bip39_seed.sh"
+CRYPTO_KDF_HELPER="${SCRIPT_DIR}/scripts/crypto_kdf.py"
 SECP256K1_HELPER="${SCRIPT_DIR}/scripts/secp256k1_pub.sh"
 KECCAK_HELPER="${SCRIPT_DIR}/scripts/keccak256.sh"
 EIP55_HELPER="${SCRIPT_DIR}/scripts/eip55_checksum.sh"
+
+export BIP39_HELPER
+export CRYPTO_KDF_HELPER
+export SECP256K1_HELPER
+export KECCAK_HELPER
+export EIP55_HELPER
 
 hex_to_bits() {
   local hex=${1:-}
@@ -52,6 +59,11 @@ MNEMONIC_ENV="${MNEMONIC-}"
 
 if [[ ! -x "${BIP39_HELPER}" ]]; then
   echo "Seed helper '${BIP39_HELPER}' not executable" >&2
+  exit 1
+fi
+
+if [[ ! -x "${CRYPTO_KDF_HELPER}" ]]; then
+  echo "Crypto helper '${CRYPTO_KDF_HELPER}' not executable" >&2
   exit 1
 fi
 
@@ -140,7 +152,7 @@ PASSPHRASE="${*:-}"
 [[ "$(wc -l < "${WLIST}")" -eq 2048 ]] || { echo "wordlist must have 2048 lines" >&2; exit 1; }
 
 # check dependencies
-for cmd in xxd bc awk sha256sum openssl; do
+for cmd in xxd bc awk sha256sum openssl python3; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 
@@ -312,8 +324,15 @@ SEED_HEX="$(
 )"
 
 debug "Hex Seed: ${SEED_HEX}"
+
+hmac_sha512() {
+  local key_hex="$1" data_hex="$2"
+  "${CRYPTO_KDF_HELPER}" hmac-sha512 --key-hex "${key_hex}" --data-hex "${data_hex}"
+}
+
 # master I, IL, IR
-I_MASTER="$(printf "%s" "${SEED_HEX}" | xxd -r -p | openssl dgst -sha512 -mac HMAC -macopt key:"Bitcoin seed" -binary | xxd -p -c 1000)"
+BITCOIN_SEED_HEX="$(printf "%s" "Bitcoin seed" | xxd -p -c 1000)"
+I_MASTER="$(hmac_sha512 "${BITCOIN_SEED_HEX}" "${SEED_HEX}")"
 IL="${I_MASTER:0:64}"; IR="${I_MASTER:64:64}"
 
 debug "I_MASTER: ${I_MASTER}"
@@ -328,7 +347,7 @@ derive_hardened(){
     local i_hex; printf -v i_hex "%08X" $((idx | 0x80000000))
     local data="00${kpar}${i_hex}"
     local I
-    I="$(printf "%s" "${data}" | xxd -r -p | openssl dgst -sha512 -mac HMAC -macopt "hexkey:${cpar}" -binary | xxd -p -c 1000)"
+    I="$(hmac_sha512 "${cpar}" "${data}")"
     local ILc="${I:0:64}" IRc="${I:64:64}"
     local child_k
     child_k="$(bn_add_mod_n "${ILc}" "${kpar}")"
@@ -363,7 +382,7 @@ derive_normal(){
     Kpar_comp="$(pub_compressed_from_priv_hex "${kpar}")"
     local data="${Kpar_comp}${i_hex}"
     local I
-    I="$(printf "%s" "${data}" | xxd -r -p | openssl dgst -sha512 -mac HMAC -macopt "hexkey:${cpar}" -binary | xxd -p -c 1000)"
+    I="$(hmac_sha512 "${cpar}" "${data}")"
     local ILc="${I:0:64}" IRc="${I:64:64}"
     local child_k
     child_k="$(bn_add_mod_n "${ILc}" "${kpar}")"
