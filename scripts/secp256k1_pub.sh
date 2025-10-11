@@ -21,7 +21,9 @@ err() {
 }
 
 require_tools() {
-  for tool in bc; do
+  local -a required_tools=(bc)
+  local tool
+  for tool in "${required_tools[@]}"; do
     if ! command -v "${tool}" >/dev/null 2>&1; then
       err "Required tool '${tool}' not found"
       exit 1
@@ -224,8 +226,10 @@ BC
 
   local x_dec="${coords[0]}"
   local y_dec="${coords[1]}"
-  local x_hex="$(decimal_to_hex "${x_dec}")"
-  local y_hex="$(decimal_to_hex "${y_dec}")"
+  local x_hex
+  x_hex="$(decimal_to_hex "${x_dec}")"
+  local y_hex
+  y_hex="$(decimal_to_hex "${y_dec}")"
 
   printf '%s %s\n' "${x_hex}" "${y_hex}"
 }
