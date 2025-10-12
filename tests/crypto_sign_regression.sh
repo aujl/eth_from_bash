@@ -92,6 +92,50 @@ main() {
   fi
   pass "RSA verification accepts fixture signature"
 
+  local temp_dir
+  temp_dir="$(mktemp -d)"
+  trap 'rm -rf "'"${temp_dir}"'"' EXIT
+
+  local fixture_pub_out="${temp_dir}/fixture_pub.pem"
+  "${CRYPTO_SIGN}" rsa-public --key "${RSA_PRIV}" --output "${fixture_pub_out}"
+  if cmp -s "${fixture_pub_out}" "${RSA_PUB}"; then
+    pass "rsa-public reproduces fixture SPKI"
+  else
+    echo "FAIL: rsa-public output mismatch for fixture" >&2
+    exit 1
+  fi
+
+  local generated_priv="${temp_dir}/generated_priv.pem"
+  local generated_pub="${temp_dir}/generated_pub.pem"
+  "${CRYPTO_SIGN}" rsa-generate --bits 512 --private-out "${generated_priv}" --public-out "${generated_pub}"
+  if [[ $(stat -c '%a' "${generated_priv}") != "600" ]]; then
+    echo "FAIL: rsa-generate did not set private key permissions to 600" >&2
+    exit 1
+  fi
+  if [[ $(stat -c '%a' "${generated_pub}") != "644" ]]; then
+    echo "FAIL: rsa-generate did not set public key permissions to 644" >&2
+    exit 1
+  fi
+  pass "rsa-generate creates keypair with expected permissions"
+
+  local derived_pub="${temp_dir}/derived_pub.pem"
+  "${CRYPTO_SIGN}" rsa-public --key "${generated_priv}" --output "${derived_pub}"
+  if cmp -s "${derived_pub}" "${generated_pub}"; then
+    pass "rsa-public round-trips generated private key"
+  else
+    echo "FAIL: rsa-public output mismatched generated public key" >&2
+    exit 1
+  fi
+
+  local python_pub="${temp_dir}/python_pub.pem"
+  "${CRYPTO_SIGN_ECDSA}" rsa-public --key "${generated_priv}" --output "${python_pub}"
+  if cmp -s "${python_pub}" "${generated_pub}"; then
+    pass "rsa-generate output matches python helper"
+  else
+    echo "FAIL: rsa-generate public key mismatch versus python helper" >&2
+    exit 1
+  fi
+
   expected="$(tr -d '\n' <"${ECDSA_SIG_B64_FILE}")"
   observed="$("${CRYPTO_SIGN_ECDSA}" ecdsa-sign --key "${ECDSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
   observed="${observed//[$'\n\r']/}"
