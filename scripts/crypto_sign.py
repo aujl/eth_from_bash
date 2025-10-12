@@ -652,30 +652,6 @@ def _pem_wrap(label: str, der: bytes) -> bytes:
 # === Command handlers ===
 
 
-def cmd_hmac_sha256(args: argparse.Namespace) -> int:
-    key = _read_file(args.key)
-    data = _read_file(args.message)
-    digest = hmac.new(key, data, hashlib.sha256).digest()
-    if args.output == "hex":
-        print(digest.hex())
-    elif args.output == "base64":
-        print(base64.b64encode(digest).decode())
-    else:
-        sys.stdout.buffer.write(digest)
-    return 0
-
-
-def cmd_random_bytes(args: argparse.Namespace) -> int:
-    data = secrets.token_bytes(args.count)
-    if args.output == "hex":
-        print(data.hex())
-    elif args.output == "base64":
-        print(base64.b64encode(data).decode())
-    else:
-        sys.stdout.buffer.write(data)
-    return 0
-
-
 def cmd_rsa_sign(args: argparse.Namespace) -> int:
     priv = load_rsa_private_key(args.key)
     message = _read_file(args.message)
@@ -761,17 +737,6 @@ def cmd_ecdsa_public(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Internal signing helpers")
     sub = parser.add_subparsers(dest="command", required=True)
-
-    hmac_parser = sub.add_parser("hmac-sha256", help="Compute HMAC-SHA256")
-    hmac_parser.add_argument("--key", required=True, help="Key file (use - for stdin)")
-    hmac_parser.add_argument("--message", required=True, help="Message file (use - for stdin)")
-    hmac_parser.add_argument("--output", choices=["hex", "base64", "raw"], default="hex")
-    hmac_parser.set_defaults(func=cmd_hmac_sha256)
-
-    rand_parser = sub.add_parser("random-bytes", help="Generate secure random bytes")
-    rand_parser.add_argument("--count", type=int, required=True)
-    rand_parser.add_argument("--output", choices=["hex", "base64", "raw"], default="hex")
-    rand_parser.set_defaults(func=cmd_random_bytes)
 
     rsa_sign = sub.add_parser("rsa-sign", help="Sign message with RSA PKCS#1 v1.5")
     rsa_sign.add_argument("--key", required=True)

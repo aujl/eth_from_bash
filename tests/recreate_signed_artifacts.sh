@@ -14,6 +14,7 @@ KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
 CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+CRYPTO_SIGN_RANDOM="${ROOT_DIR}/scripts/crypto_sign.sh"
 CRYPTO_KDF="${ROOT_DIR}/scripts/crypto_kdf.sh"
 
 current_mode() {
@@ -57,7 +58,7 @@ mktemp_file() {
 }
 
 TMP_KEY="$(mktemp_file)"
-"${CRYPTO_SIGN}" random-bytes --count 32 --output raw >"${TMP_KEY}"
+"${CRYPTO_SIGN_RANDOM}" random-bytes --count 32 --output raw >"${TMP_KEY}"
 
 canonical="$(jq -cS '.' "${CORE_JSON}")"
 key_hex="$(xxd -p "${TMP_KEY}" | tr -d '\n')"

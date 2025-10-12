@@ -8,7 +8,7 @@ source "${TESTS_DIR}/common.sh"
 source "${TESTS_DIR}/load_secrets.sh"
 
 CORE_FIXTURE="${ROOT_DIR}/tests/fixtures/core_flow_vectors.json"
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+CRYPTO_SIGN_HMAC="${ROOT_DIR}/scripts/crypto_sign.sh"
 
 load_fixture_values() {
   if [[ ! -f "${CORE_FIXTURE}" ]]; then
@@ -77,7 +77,7 @@ verify_core_fixture_integrity() {
 
   computed_hex=$(
     printf '%s' "${canonical}" \
-      | "${CRYPTO_SIGN}" hmac-sha256 --key "${key_file}" --message - --output hex
+      | "${CRYPTO_SIGN_HMAC}" hmac-sha256 --key "${key_file}" --message - --output hex
   )
 
   expected_hex="${expected_hex//[$'\n\r']/}"
@@ -89,6 +89,75 @@ verify_core_fixture_integrity() {
     echo "FAIL: Core flow fixture integrity mismatch" >&2
     exit 1
   fi
+}
+
+run_crypto_sign_hmac_vectors() {
+  local key_file message_file raw_file hex_output base64_output raw_len
+  key_file="$(mktemp)"
+  message_file="$(mktemp)"
+  raw_file="$(mktemp)"
+  printf 'key' >"${key_file}"
+  printf 'The quick brown fox jumps over the lazy dog' >"${message_file}"
+
+  hex_output="$(${CRYPTO_SIGN_HMAC} hmac-sha256 --key "${key_file}" --message "${message_file}" --output hex | tr -d '\n')"
+  if [[ "${hex_output}" != "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8" ]]; then
+    echo "FAIL: crypto_sign hmac-sha256 hex output mismatch" >&2
+    rm -f -- "${key_file}" "${message_file}" "${raw_file}"
+    exit 1
+  fi
+
+  base64_output="$(${CRYPTO_SIGN_HMAC} hmac-sha256 --key "${key_file}" --message "${message_file}" --output base64 | tr -d '\n')"
+  if [[ "${base64_output}" != "97yD9DBThCSxMpjmqm+xQ+9NWaFJRhdZl0edvC0aPNg=" ]]; then
+    echo "FAIL: crypto_sign hmac-sha256 base64 output mismatch" >&2
+    rm -f -- "${key_file}" "${message_file}" "${raw_file}"
+    exit 1
+  fi
+
+  ${CRYPTO_SIGN_HMAC} hmac-sha256 --key "${key_file}" --message "${message_file}" --output raw >"${raw_file}"
+  raw_len=$(wc -c <"${raw_file}")
+  if (( raw_len != 32 )); then
+    echo "FAIL: crypto_sign hmac-sha256 raw output length" >&2
+    rm -f -- "${key_file}" "${message_file}" "${raw_file}"
+    exit 1
+  fi
+
+  rm -f -- "${key_file}" "${message_file}" "${raw_file}"
+  pass "crypto_sign hmac-sha256 output formats"
+}
+
+run_crypto_sign_random_bytes() {
+  local hex_output base64_output tmp_file length
+
+  hex_output="$(${CRYPTO_SIGN_HMAC} random-bytes --count 16 --output hex | tr -d '\n')"
+  if [[ ${#hex_output} -ne 32 || ! "${hex_output}" =~ ^[0-9a-f]+$ ]]; then
+    echo "FAIL: crypto_sign random-bytes hex output format" >&2
+    exit 1
+  fi
+
+  base64_output="$(${CRYPTO_SIGN_HMAC} random-bytes --count 24 --output base64 | tr -d '\n')"
+  tmp_file="$(mktemp)"
+  if ! printf '%s' "${base64_output}" | base64 -d >"${tmp_file}" 2>/dev/null; then
+    echo "FAIL: crypto_sign random-bytes base64 decode" >&2
+    rm -f -- "${tmp_file}"
+    exit 1
+  fi
+  length=$(wc -c <"${tmp_file}")
+  rm -f -- "${tmp_file}"
+  if (( length != 24 )); then
+    echo "FAIL: crypto_sign random-bytes base64 length" >&2
+    exit 1
+  fi
+
+  tmp_file="$(mktemp)"
+  ${CRYPTO_SIGN_HMAC} random-bytes --count 8 --output raw >"${tmp_file}"
+  length=$(wc -c <"${tmp_file}")
+  rm -f -- "${tmp_file}"
+  if (( length != 8 )); then
+    echo "FAIL: crypto_sign random-bytes raw length" >&2
+    exit 1
+  fi
+
+  pass "crypto_sign random-bytes output formats"
 }
 
 run_seed_vector() {
@@ -226,6 +295,8 @@ run_master_il_guard() {
 main() {
   load_fixture_values
   verify_core_fixture_integrity
+  run_crypto_sign_hmac_vectors
+  run_crypto_sign_random_bytes
   run_seed_vector
   run_secp_helper_pub
   run_mnemonic_checksum
