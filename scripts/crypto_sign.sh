@@ -336,7 +336,6 @@ parse_rsa_private_pkcs1() {
   done
   der_expect_eof "${seq_hex}" "${offset}"
   RSA_PRIV_N="${n_hex}"
-  RSA_PRIV_E="${e_hex}"
   RSA_PRIV_D="${d_hex}"
 }
 
@@ -346,7 +345,8 @@ parse_rsa_private_pkcs8() {
   local seq_hex="${DER_SEQUENCE_HEX}"
   local offset=0
   der_read_integer "${seq_hex}" "${offset}"
-  local version="$(hex_to_dec "${DER_INTEGER_HEX}")"
+  local version
+  version="$(hex_to_dec "${DER_INTEGER_HEX}")"
   offset="${DER_NEXT_OFFSET}"
   [[ "${version}" == "0" ]] || die "DER: unsupported PKCS#8 version"
   der_read_sequence "${seq_hex}" "${offset}"
@@ -620,8 +620,9 @@ cmd_rsa_sign() {
   local digest_info_hex
   digest_info_hex="$(rsa_digest_info_hex "${hash_name}" "${digest_hex}")"
 
-  local n_hex="$(normalize_hex "${RSA_PRIV_N}")"
-  local d_hex="$(normalize_hex "${RSA_PRIV_D}")"
+  local n_hex d_hex
+  n_hex="$(normalize_hex "${RSA_PRIV_N}")"
+  d_hex="$(normalize_hex "${RSA_PRIV_D}")"
   local k_bytes=$(( ${#n_hex} / 2 ))
   local digest_len_bytes=$(( ${#digest_info_hex} / 2 ))
   local padding_len=$((k_bytes - digest_len_bytes - 3))
@@ -722,8 +723,9 @@ cmd_rsa_verify() {
 
   local expected_digest_info
   expected_digest_info="$(rsa_digest_info_hex "${hash_name}" "${digest_hex}")"
-  local n_hex="$(normalize_hex "${RSA_PUB_N}")"
-  local e_hex="$(normalize_hex "${RSA_PUB_E}")"
+  local n_hex e_hex
+  n_hex="$(normalize_hex "${RSA_PUB_N}")"
+  e_hex="$(normalize_hex "${RSA_PUB_E}")"
   local k_bytes=$(( ${#n_hex} / 2 ))
 
   local signature_hex
