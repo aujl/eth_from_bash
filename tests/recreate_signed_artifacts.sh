@@ -13,7 +13,8 @@ PRIVATE_KEY_DIR="${PRIVATE_KEY_DIR:-$HOME/.config/eth_from_bash/maintainer}"
 KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+CRYPTO_SIGN_RSA="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_ECDSA="${ROOT_DIR}/scripts/crypto_sign.py"
 CRYPTO_SIGN_RANDOM="${ROOT_DIR}/scripts/crypto_sign.sh"
 CRYPTO_KDF="${ROOT_DIR}/scripts/crypto_kdf.sh"
 
@@ -37,6 +38,23 @@ done
 
 b64() {
   base64 | tr -d '\n'
+}
+
+capture_rsa_output() {
+  local __var="$1"
+  local description="$2"
+  shift 2
+  set +e
+  local __output
+  __output="$("$@" 2>&1)"
+  local __status=$?
+  set -e
+  if (( __status != 0 )); then
+    echo "ERROR: ${description} requires crypto_sign.sh RSA support (pending implementation)" >&2
+    printf '%s\n' "${__output}" >&2
+    exit 1
+  fi
+  printf -v "${__var}" '%s' "${__output}"
 }
 
 cleanup_files=()
@@ -76,8 +94,9 @@ CORE_FLOW_FIXTURE_HMAC_B64="$(
 
 CORE_FLOW_FIXTURE_HMAC_KEY_B64="$(b64 <"${TMP_KEY}")"
 
-KECCAK_VECTOR_SIG_B64="$("${CRYPTO_SIGN}" rsa-sign --key "${KECCAK_PRIV}" --message "${KECCAK_JSON}" --output base64)"
-SECP256K1_VECTOR_SIG_B64="$("${CRYPTO_SIGN}" ecdsa-sign --key "${SECP_PRIV}" --message "${SECP_JSON}" --output base64)"
+capture_rsa_output KECCAK_VECTOR_SIG_B64_RAW "Signing keccak vectors fixture" "${CRYPTO_SIGN_RSA}" rsa-sign --key "${KECCAK_PRIV}" --message "${KECCAK_JSON}" --output base64
+KECCAK_VECTOR_SIG_B64="${KECCAK_VECTOR_SIG_B64_RAW//[$'\n\r']/}"
+SECP256K1_VECTOR_SIG_B64="$("${CRYPTO_SIGN_ECDSA}" ecdsa-sign --key "${SECP_PRIV}" --message "${SECP_JSON}" --output base64)"
 
 printf "export CORE_FLOW_FIXTURE_HMAC_KEY_B64='%s'\n" "${CORE_FLOW_FIXTURE_HMAC_KEY_B64}"
 printf "export CORE_FLOW_FIXTURE_HMAC_B64='%s'\n" "${CORE_FLOW_FIXTURE_HMAC_B64}"
