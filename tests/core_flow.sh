@@ -210,7 +210,7 @@ run_env_mnemonic_invalid() {
 
 run_master_il_guard() {
   local real_helper stub_helper
-  real_helper="${ROOT_DIR}/scripts/crypto_kdf.py"
+  real_helper="${ROOT_DIR}/scripts/crypto_kdf.sh"
   stub_helper="${ROOT_DIR}/tests/fixtures/crypto_kdf_stub.sh"
   if CRYPTO_KDF_REAL="${real_helper}" \
     CRYPTO_KDF_HELPER="${stub_helper}" \

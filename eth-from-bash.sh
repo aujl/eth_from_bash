@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # eth-from-bash-perl-keccak.sh
 # Like before, but uses libdigest-sha3-perl for the final Keccak / SHA3 step
-# deps: bash, xxd, bc, awk, sha256sum, openssl, python3, Perl with Digest::SHA3
+# deps: bash, xxd, bc, awk, sha256sum, sha512sum, Perl with Digest::SHA3
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIP39_HELPER="${BIP39_HELPER:-${SCRIPT_DIR}/scripts/bip39_seed.sh}"
-CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${SCRIPT_DIR}/scripts/crypto_kdf.py}"
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${SCRIPT_DIR}/scripts/crypto_kdf.sh}"
 SECP256K1_HELPER="${SECP256K1_HELPER:-${SCRIPT_DIR}/scripts/secp256k1_pub.sh}"
 KECCAK_HELPER="${KECCAK_HELPER:-${SCRIPT_DIR}/scripts/keccak256.sh}"
 EIP55_HELPER="${EIP55_HELPER:-${SCRIPT_DIR}/scripts/eip55_checksum.sh}"
@@ -152,7 +152,7 @@ PASSPHRASE="${*:-}"
 [[ "$(wc -l < "${WLIST}")" -eq 2048 ]] || { echo "wordlist must have 2048 lines" >&2; exit 1; }
 
 # check dependencies
-for cmd in xxd bc awk sha256sum openssl python3; do
+for cmd in xxd bc awk sha256sum sha512sum; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 

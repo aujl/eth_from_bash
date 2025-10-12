@@ -14,7 +14,7 @@ KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
 CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
-CRYPTO_KDF="${ROOT_DIR}/scripts/crypto_kdf.py"
+CRYPTO_KDF="${ROOT_DIR}/scripts/crypto_kdf.sh"
 
 current_mode() {
   stat -c '%a' "$1"

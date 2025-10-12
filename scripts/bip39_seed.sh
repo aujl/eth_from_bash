@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CRYPTO_KDF_HELPER="${SCRIPT_DIR}/crypto_kdf.py"
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${SCRIPT_DIR}/crypto_kdf.sh}"
 
 usage() {
   cat <<'USAGE'
@@ -59,11 +59,6 @@ if [[ ! -x "${CRYPTO_KDF_HELPER}" ]]; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 command not found" >&2
-  exit 1
-fi
-
 seed_hex="$(
   "${CRYPTO_KDF_HELPER}" pbkdf2 \
     --mnemonic "${mnemonic}" \
@@ -72,7 +67,7 @@ seed_hex="$(
 )"
 
 if [[ -z "${seed_hex}" ]]; then
-  echo "Failed to derive seed with OpenSSL PBKDF2." >&2
+  echo "Failed to derive seed with PBKDF2 helper." >&2
   exit 1
 fi
 
