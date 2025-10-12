@@ -1,28 +1,28 @@
 # Ethereum Keys from Bash
 
-Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using Bash with bundled helpers for Keccak, elliptic curve operations, and Python-backed PBKDF2/HMAC primitives.
+Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using Bash with bundled helpers for Keccak, elliptic curve operations, and Bash PBKDF2/HMAC primitives backed by the Perl Digest::SHA module.
 
 This repo includes:
 - `eth-from-bash.sh`: BIP‑39 seed (PBKDF2), BIP‑32 (secp256k1) derivation for `m/44'/60'/0'/0/0`, public key → Ethereum address (Keccak‑256 + EIP‑55).
-- `scripts/crypto_kdf.py`: Internal PBKDF2 and HMAC-SHA512 helper used by the CLI and tests.
+- `scripts/crypto_kdf.sh`: Shell PBKDF2/HMAC helper backed by the Perl `Digest::SHA` module for the CLI and tests.
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
 - `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
 - `tests/load_secrets.sh`: Helper that materializes signature/HMAC secrets for the test harness.
 
 ## Features
 - BIP‑39 mnemonic generation (128‑bit entropy) or import via `--mnemonic`.
-- Seed derivation via Python `hashlib.pbkdf2_hmac` (HMAC‑SHA512, 2048 iters).
+- Seed derivation via PBKDF2-HMAC-SHA512 (2048 iters) powered by Perl Digest::SHA HMAC primitives.
 - BIP‑32 derivation with guards: skips invalid `IL >= n` or child key = 0.
 - Ethereum address: Keccak‑256 of uncompressed pubkey (no prefix), EIP‑55 checksum.
-- Non-blocking entropy via `openssl rand -hex 16` with `/dev/urandom` fallback.
+- Non-blocking entropy sourced from `/dev/urandom` (optionally `openssl rand -hex 16` when available).
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
-- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `jq`, `openssl` (v3+), `python3`.
+- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `jq`, `sha256sum`, `sha512sum`, `perl` (core `Digest::SHA`).
 
 On Debian/Ubuntu:
 ```
-sudo apt update && sudo apt install -y jq bc vim-common openssl python3
+sudo apt update && sudo apt install -y jq bc vim-common
 ```
 
 ## Usage
@@ -59,7 +59,7 @@ Output JSON fields:
 
 Helper environment variables exported by `eth-from-bash.sh` (available to tests and downstream scripts):
 - `BIP39_HELPER`: Bash wrapper around PBKDF2 seed derivation.
-- `CRYPTO_KDF_HELPER`: Python CLI for PBKDF2 and HMAC-SHA512 primitives.
+- `CRYPTO_KDF_HELPER`: Bash CLI for PBKDF2 and HMAC primitives.
 - `SECP256K1_HELPER`, `KECCAK_HELPER`, `EIP55_HELPER`: Existing secp256k1, Keccak-256, and EIP-55 utilities.
 
 ## Tests
@@ -113,7 +113,7 @@ make lint
 make deps
 ```
 
-- `scripts/check_deps.sh`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `openssl`, `awk`, `sha256sum`, `python3`).
+- `scripts/check_deps.sh`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`, `perl`).
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
