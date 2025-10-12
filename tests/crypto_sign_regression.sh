@@ -5,7 +5,8 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/common.sh
 source "${TESTS_DIR}/common.sh"
 
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_ECDSA="${ROOT_DIR}/scripts/crypto_sign.py"
 FIXTURE_DIR="${ROOT_DIR}/tests/fixtures/crypto_sign"
 MESSAGE_FILE="${FIXTURE_DIR}/message.txt"
 
@@ -34,6 +35,18 @@ ensure_permissions() {
   fi
 }
 
+run_with_status() {
+  local __out_var="$1"
+  shift
+  set +e
+  local __output
+  __output="$("$@" 2>&1)"
+  local __status=$?
+  set -e
+  printf -v "${__out_var}" '%s' "${__output}"
+  return "${__status}"
+}
+
 main() {
   require_fixture "${MESSAGE_FILE}" "message fixture"
   require_fixture "${RSA_PRIV}" "RSA private key"
@@ -50,24 +63,30 @@ main() {
 
   local expected observed
   expected="$(tr -d '\n' <"${RSA_SIG_B64_FILE}")"
-  observed="$("${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
-  observed="${observed//[$'\n\r']/}"
+  local rsa_sign_output
+  if ! run_with_status rsa_sign_output "${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64; then
+    echo "FAIL: crypto_sign.sh rsa-sign missing; RSA support pending" >&2
+    printf '%s\n' "${rsa_sign_output}" >&2
+    exit 1
+  fi
+  observed="${rsa_sign_output//[$'\n\r']/}"
   if [[ "${observed}" != "${expected}" ]]; then
     echo "FAIL: RSA signing regression mismatch" >&2
     exit 1
   fi
   pass "RSA signing regression matches fixture"
 
-  if "${CRYPTO_SIGN}" rsa-verify --key "${RSA_PUB}" --message "${MESSAGE_FILE}" \
-    --signature <(base64 -d "${RSA_SIG_B64_FILE}") >/dev/null; then
-    pass "RSA verification accepts fixture signature"
-  else
-    echo "FAIL: RSA verification rejected fixture" >&2
+  local rsa_verify_output
+  if ! run_with_status rsa_verify_output "${CRYPTO_SIGN}" rsa-verify --key "${RSA_PUB}" --message "${MESSAGE_FILE}" \
+    --signature <(base64 -d "${RSA_SIG_B64_FILE}"); then
+    echo "FAIL: crypto_sign.sh rsa-verify missing; RSA support pending" >&2
+    printf '%s\n' "${rsa_verify_output}" >&2
     exit 1
   fi
+  pass "RSA verification accepts fixture signature"
 
   expected="$(tr -d '\n' <"${ECDSA_SIG_B64_FILE}")"
-  observed="$("${CRYPTO_SIGN}" ecdsa-sign --key "${ECDSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
+  observed="$("${CRYPTO_SIGN_ECDSA}" ecdsa-sign --key "${ECDSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
   observed="${observed//[$'\n\r']/}"
   if [[ "${observed}" != "${expected}" ]]; then
     echo "FAIL: secp256k1 signing regression mismatch" >&2
@@ -75,7 +94,7 @@ main() {
   fi
   pass "secp256k1 signing regression matches fixture"
 
-  if "${CRYPTO_SIGN}" ecdsa-verify --key "${ECDSA_PUB}" --message "${MESSAGE_FILE}" \
+  if "${CRYPTO_SIGN_ECDSA}" ecdsa-verify --key "${ECDSA_PUB}" --message "${MESSAGE_FILE}" \
     --signature <(base64 -d "${ECDSA_SIG_B64_FILE}") >/dev/null; then
     pass "secp256k1 verification accepts fixture signature"
   else

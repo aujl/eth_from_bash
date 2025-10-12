@@ -18,7 +18,8 @@ KECCAK_PUB="${FIXTURES_DIR}/keccak_reference_pub.pem"
 SECP_PRIV="${PRIVATE_KEY_DIR}/secp256k1_vectors_priv.pem"
 SECP_PUB="${FIXTURES_DIR}/secp256k1_vectors_pub.pem"
 
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.py"
+CRYPTO_SIGN_RSA="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_ECDSA="${ROOT_DIR}/scripts/crypto_sign.py"
 
 current_mode() {
   stat -c '%a' "$1"
@@ -46,19 +47,32 @@ ensure_mode() {
   fi
 }
 
+run_rsa_command() {
+  local description="$1"
+  shift
+  set +e
+  "$@"
+  local status=$?
+  set -e
+  if (( status != 0 )); then
+    echo "ERROR: ${description} requires crypto_sign.sh RSA support (pending implementation)" >&2
+    exit 1
+  fi
+}
+
 if [[ ! -f "${KECCAK_PRIV}" ]]; then
-  "${CRYPTO_SIGN}" rsa-generate --bits 2048 --private-out "${KECCAK_PRIV}" --public-out "${KECCAK_PUB}"
+  run_rsa_command "Generating RSA maintainer keypair" "${CRYPTO_SIGN_RSA}" rsa-generate --bits 2048 --private-out "${KECCAK_PRIV}" --public-out "${KECCAK_PUB}"
 else
   ensure_mode "${KECCAK_PRIV}" 400 "private key"
-  "${CRYPTO_SIGN}" rsa-public --key "${KECCAK_PRIV}" --output "${KECCAK_PUB}"
+  run_rsa_command "Deriving RSA public key" "${CRYPTO_SIGN_RSA}" rsa-public --key "${KECCAK_PRIV}" --output "${KECCAK_PUB}"
 fi
 chmod 400 "${KECCAK_PRIV}"
 
 if [[ ! -f "${SECP_PRIV}" ]]; then
-  "${CRYPTO_SIGN}" ecdsa-generate --private-out "${SECP_PRIV}" --public-out "${SECP_PUB}"
+  "${CRYPTO_SIGN_ECDSA}" ecdsa-generate --private-out "${SECP_PRIV}" --public-out "${SECP_PUB}"
 else
   ensure_mode "${SECP_PRIV}" 400 "private key"
-  "${CRYPTO_SIGN}" ecdsa-public --key "${SECP_PRIV}" --output "${SECP_PUB}"
+  "${CRYPTO_SIGN_ECDSA}" ecdsa-public --key "${SECP_PRIV}" --output "${SECP_PUB}"
 fi
 chmod 400 "${SECP_PRIV}"
 
