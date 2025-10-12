@@ -61,8 +61,15 @@ main() {
   ensure_permissions "${RSA_PUB}" 444
   ensure_permissions "${ECDSA_PUB}" 444
 
-  local expected observed
+  local expected observed python_expected
   expected="$(tr -d '\n' <"${RSA_SIG_B64_FILE}")"
+  python_expected="$("${CRYPTO_SIGN_ECDSA}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
+  python_expected="${python_expected//[$'\n\r']/}"
+  if [[ "${python_expected}" != "${expected}" ]]; then
+    echo "FAIL: Python helper RSA signature mismatch" >&2
+    exit 1
+  fi
+  pass "RSA python helper matches fixture"
   local rsa_sign_output
   if ! run_with_status rsa_sign_output "${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64; then
     echo "FAIL: crypto_sign.sh rsa-sign missing; RSA support pending" >&2
