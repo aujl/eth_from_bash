@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -o noclobber
 
 die() {
   echo "crypto_sign.sh: $*" >&2
@@ -15,6 +16,8 @@ Commands:
   random-bytes   Generate random bytes from /dev/urandom
   rsa-sign       Sign message with RSA PKCS#1 v1.5
   rsa-verify     Verify RSA PKCS#1 v1.5 signature
+  rsa-generate   Generate RSA keypair (PKCS#8 private + SPKI public)
+  rsa-public     Derive RSA public key from private key
 
 Run "crypto_sign.sh <command> --help" for command-specific flags.
 USAGE
@@ -41,6 +44,18 @@ USAGE
 usage_rsa_verify() {
   cat <<'USAGE'
 Usage: crypto_sign.sh rsa-verify --key <path> --message <path|-> --signature <path|-> [--hash sha256]
+USAGE
+}
+
+usage_rsa_generate() {
+  cat <<'USAGE'
+Usage: crypto_sign.sh rsa-generate --bits <n> --private-out <path> --public-out <path> [--exponent <value>]
+USAGE
+}
+
+usage_rsa_public() {
+  cat <<'USAGE'
+Usage: crypto_sign.sh rsa-public --key <path> --output <path|->
 USAGE
 }
 
@@ -177,6 +192,86 @@ scale=0
 modexp(${base}, ${exponent}, ${modulus})
 BC
 }
+
+read -r -d '' BC_COMMON_FUNCS <<'BC_FUNCS' || true
+define modexp(a,b,n){
+  if(n==1) return 0;
+  a%=n;
+  res=1;
+  while(b>0){
+    if(b%2==1) res=(res*a)%n;
+    a=(a*a)%n;
+    b/=2;
+  }
+  return res;
+}
+define gcd(a,b){
+  auto t;
+  while(b!=0){
+    t=b;
+    b=a%b;
+    a=t;
+  }
+  if(a<0) a=-a;
+  return a;
+}
+define modinv(a,m){
+  auto m0,t,q,x0,x1;
+  m0=m;
+  x0=0;
+  x1=1;
+  if(m==1) return 0;
+  while(a>1){
+    q=a/m;
+    t=m;
+    m=a%m;
+    a=t;
+    t=x0;
+    x0=x1-q*x0;
+    x1=t;
+  }
+  if(x1<0) x1+=m0;
+  x1%=m0;
+  if(x1<0) x1+=m0;
+  return x1;
+}
+define lcm(a,b){
+  return (a/gcd(a,b))*b;
+}
+define miller_rabin(n,a){
+  if(a<=1||a>=n) return 0;
+  if(n%a==0) return (a==n);
+  d=n-1;
+  s=0;
+  while(d%2==0){
+    d/=2;
+    s+=1;
+  }
+  x=modexp(a,d,n);
+  if(x==1||x==n-1) return 1;
+  for(r=1;r<s;r++){
+    x=(x*x)%n;
+    if(x==n-1) return 1;
+  }
+  return 0;
+}
+BC_FUNCS
+
+bc_eval_common() {
+  local expr="$1"
+  bc <<BC
+${BC_COMMON_FUNCS}
+scale=0
+${expr}
+BC
+}
+
+bc_mod() {
+  local a="$1"
+  local b="$2"
+  printf 'scale=0; (%s) %% (%s)\n' "${a}" "${b}" | bc
+}
+
 
 pem_block_to_hex() {
   local path="$1"
@@ -336,6 +431,7 @@ parse_rsa_private_pkcs1() {
   done
   der_expect_eof "${seq_hex}" "${offset}"
   RSA_PRIV_N="${n_hex}"
+  RSA_PRIV_E="${e_hex}"
   RSA_PRIV_D="${d_hex}"
 }
 
@@ -390,6 +486,9 @@ parse_rsa_public_spki() {
 load_rsa_private_key() {
   local path="$1"
   local der_hex
+  RSA_PRIV_N=""
+  RSA_PRIV_D=""
+  RSA_PRIV_E=""
   if der_hex="$(pem_block_to_hex "${path}" "PRIVATE KEY" 2>/dev/null)"; then
     parse_rsa_private_pkcs8 "${der_hex}"
     return 0
@@ -410,17 +509,318 @@ load_rsa_public_key() {
   parse_rsa_public_spki "${der_hex}"
 }
 
+RSA_OID="1.2.840.113549.1.1.1"
+SHA256_OID="2.16.840.1.101.3.4.2.1"
+
+der_encode_length_hex() {
+  local length="$1"
+  if (( length < 0 )); then
+    die "DER: negative length"
+  fi
+  if (( length < 0x80 )); then
+    printf '%02x' "${length}"
+    return
+  fi
+  local hex
+  hex="$(printf '%x' "${length}")"
+  if (( ${#hex} % 2 == 1 )); then
+    hex="0${hex}"
+  fi
+  local nbytes=$(( ${#hex} / 2 ))
+  printf '%02x%s' $((0x80 | nbytes)) "${hex}"
+}
+
+der_encode_tlv_hex() {
+  local tag_hex="$1"
+  shift
+  local content=""
+  local part
+  for part in "$@"; do
+    content+="${part}"
+  done
+  local length=$(( ${#content} / 2 ))
+  local len_hex
+  len_hex="$(der_encode_length_hex "${length}")"
+  printf '%s%s%s' "${tag_hex}" "${len_hex}" "${content}"
+}
+
+der_encode_integer_hex() {
+  local value
+  value="$(normalize_hex "${1}")"
+  if [[ -z "${value}" ]]; then
+    value="00"
+  fi
+  while [[ ${#value} > 2 && ${value:0:2} == "00" && $((16#${value:2:2})) < 0x80 ]]; do
+    value="${value:2}"
+  done
+  if (( 16#${value:0:2} >= 0x80 )); then
+    value="00${value}"
+  fi
+  der_encode_tlv_hex "02" "${value}"
+}
+
+der_encode_octet_string_hex() {
+  local content
+  content="$(normalize_hex "${1}")"
+  der_encode_tlv_hex "04" "${content}"
+}
+
+der_encode_bit_string_hex() {
+  local content
+  content="$(normalize_hex "${1}")"
+  der_encode_tlv_hex "03" "00${content}"
+}
+
+der_encode_sequence_hex() {
+  der_encode_tlv_hex "30" "$@"
+}
+
+der_encode_object_identifier_hex() {
+  local oid="$1"
+  local IFS='.'
+  read -r -a parts <<<"${oid}" || die "DER: invalid OID"
+  if (( ${#parts[@]} < 2 )); then
+    die "DER: invalid OID"
+  fi
+  local first_component=$((10#${parts[0]}))
+  local second_component=$((10#${parts[1]}))
+  local encoded
+  encoded=$(printf '%02x' $((first_component * 40 + second_component)))
+  local component
+  for component in "${parts[@]:2}"; do
+    local value=$((10#${component}))
+    if (( value == 0 )); then
+      encoded+="00"
+      continue
+    fi
+    local -a stack=()
+    while (( value > 0 )); do
+      stack+=( "$(printf '%02x' $((value & 0x7f)))" )
+      value=$(( value >> 7 ))
+    done
+    local idx
+    for (( idx=${#stack[@]}-1; idx>=0; idx-- )); do
+      local byte=$((16#${stack[idx]}))
+      if (( idx > 0 )); then
+        byte=$((byte | 0x80))
+      fi
+      encoded+="$(printf '%02x' "${byte}")"
+    done
+  done
+  der_encode_tlv_hex "06" "${encoded}"
+}
+
+der_encode_null_hex() {
+  printf '%s' "0500"
+}
+
+rsa_algorithm_identifier_hex() {
+  der_encode_sequence_hex \
+    "$(der_encode_object_identifier_hex "${RSA_OID}")" \
+    "$(der_encode_null_hex)"
+}
+
+sha256_algorithm_identifier_hex() {
+  der_encode_sequence_hex \
+    "$(der_encode_object_identifier_hex "${SHA256_OID}")" \
+    "$(der_encode_null_hex)"
+}
+
 rsa_digest_info_hex() {
   local hash_name="$1"
-  local digest_hex="$2"
+  local digest_hex
+  digest_hex="$(normalize_hex "${2}")"
   case "${hash_name}" in
     sha256)
-      printf '%s' "3031300d060960864801650304020105000420${digest_hex}"
+      local alg
+      alg="$(sha256_algorithm_identifier_hex)"
+      printf '%s' "$(der_encode_sequence_hex "${alg}" "$(der_encode_octet_string_hex "${digest_hex}")")"
       ;;
     *)
       die "Unsupported hash: ${hash_name}"
       ;;
   esac
+}
+
+rsa_private_to_pkcs1_hex() {
+  local n_hex="$(normalize_hex "$1")"
+  local e_hex="$(normalize_hex "$2")"
+  local d_hex="$(normalize_hex "$3")"
+  local p_hex="$(normalize_hex "$4")"
+  local q_hex="$(normalize_hex "$5")"
+  local dp_hex="$(normalize_hex "$6")"
+  local dq_hex="$(normalize_hex "$7")"
+  local qi_hex="$(normalize_hex "$8")"
+  der_encode_sequence_hex \
+    "$(der_encode_integer_hex "00")" \
+    "$(der_encode_integer_hex "${n_hex}")" \
+    "$(der_encode_integer_hex "${e_hex}")" \
+    "$(der_encode_integer_hex "${d_hex}")" \
+    "$(der_encode_integer_hex "${p_hex}")" \
+    "$(der_encode_integer_hex "${q_hex}")" \
+    "$(der_encode_integer_hex "${dp_hex}")" \
+    "$(der_encode_integer_hex "${dq_hex}")" \
+    "$(der_encode_integer_hex "${qi_hex}")"
+}
+
+rsa_private_to_pkcs8_hex() {
+  local pkcs1_hex="$1"
+  der_encode_sequence_hex \
+    "$(der_encode_integer_hex "00")" \
+    "$(rsa_algorithm_identifier_hex)" \
+    "$(der_encode_octet_string_hex "${pkcs1_hex}")"
+}
+
+rsa_public_to_spki_hex() {
+  local n_hex="$(normalize_hex "$1")"
+  local e_hex="$(normalize_hex "$2")"
+  local public_seq
+  public_seq="$(der_encode_sequence_hex "$(der_encode_integer_hex "${n_hex}")" "$(der_encode_integer_hex "${e_hex}")")"
+  der_encode_sequence_hex \
+    "$(rsa_algorithm_identifier_hex)" \
+    "$(der_encode_bit_string_hex "${public_seq}")"
+}
+
+pem_wrap_hex() {
+  local label="$1"
+  local data_hex="$2"
+  local base64_body
+  base64_body="$(hex_to_raw "${data_hex}" | base64 | tr -d '\n')"
+  local folded
+  folded="$(printf '%s' "${base64_body}" | fold -w 64)"
+  printf '%s\n' "-----BEGIN ${label}-----"
+  if [[ -n "${folded}" ]]; then
+    printf '%s\n' "${folded}"
+  fi
+  printf '%s\n' "-----END ${label}-----"
+}
+
+random_hex_bytes() {
+  local bytes="$1"
+  if (( bytes <= 0 )); then
+    return 0
+  fi
+  od -An -N "${bytes}" -tx1 /dev/urandom | tr -d ' \n'
+}
+
+generate_candidate_hex() {
+  local bits="$1"
+  local bytes=$(( (bits + 7) / 8 ))
+  local hex
+  hex="$(random_hex_bytes "${bytes}")"
+  if [[ -z "${hex}" ]]; then
+    hex="00"
+  fi
+  hex="${hex,,}"
+  local first_byte_hex="${hex:0:2}"
+  local first_byte=$((16#${first_byte_hex^^}))
+  local msb_mod=$(( bits % 8 ))
+  if (( msb_mod == 0 )); then
+    first_byte=$((first_byte | 0x80))
+  else
+    local mask=$(( (0xFF << (8 - msb_mod)) & 0xFF ))
+    first_byte=$((first_byte & mask))
+    first_byte=$((first_byte | 0x80))
+  fi
+  first_byte_hex=$(printf '%02x' "${first_byte}")
+  hex="${first_byte_hex}${hex:2}"
+  local last_index=$(( ${#hex} - 2 ))
+  local last_byte=$((16#${hex:last_index:2} ))
+  last_byte=$((last_byte | 0x01))
+  local last_hex=$(printf '%02x' "${last_byte}")
+  hex="${hex:0:last_index}${last_hex}"
+  echo "${hex}"
+}
+
+random_decimal_for_bits() {
+  local bits="$1"
+  local bytes=$(( (bits + 7) / 8 ))
+  local hex
+  hex="$(random_hex_bytes "${bytes}")"
+  if [[ -z "${hex}" ]]; then
+    hex="00"
+  fi
+  printf 'ibase=16;%s\n' "${hex^^}" | bc
+}
+
+is_probable_prime_dec() {
+  local candidate="$1"
+  local bits="$2"
+  if [[ "${candidate}" == "2" || "${candidate}" == "3" ]]; then
+    return 0
+  fi
+  if [[ "${candidate}" == "" ]]; then
+    return 1
+  fi
+  if [[ "$(bc_mod "${candidate}" 2)" == "0" ]]; then
+    return 1
+  fi
+  local small_primes=(3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97)
+  local prime mod
+  for prime in "${small_primes[@]}"; do
+    if [[ "${candidate}" == "${prime}" ]]; then
+      return 0
+    fi
+    mod="$(bc_mod "${candidate}" "${prime}")"
+    if [[ "${mod}" == "0" ]]; then
+      return 1
+    fi
+  done
+  if (( bits <= 2 )); then
+    return 1
+  fi
+  local rounds=4
+  local i
+  for (( i = 0; i < rounds; i++ )); do
+    local random_dec
+    random_dec="$(random_decimal_for_bits "${bits}")"
+    if [[ -z "${random_dec}" ]]; then
+      random_dec=2
+    fi
+    local expr
+    read -r -d '' expr <<EOF || true
+n=${candidate}
+rand=${random_dec}
+if (n <= 3) {
+  if (n == 2 || n == 3) {
+    print 1
+  } else {
+    print 0
+  }
+} else {
+  if (n % 2 == 0) {
+    print 0
+  } else {
+    if (rand <= 1 || rand >= n - 1) rand = (rand % (n - 3)) + 2;
+    print miller_rabin(n, rand)
+  }
+}
+EOF
+    local result
+    result="$(bc_eval_common "${expr}")"
+    if [[ "${result}" != "1" ]]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+generate_prime_dec() {
+  local bits="$1"
+  while true; do
+    local candidate_hex
+    candidate_hex="$(generate_candidate_hex "${bits}")"
+    local candidate
+    candidate="$(printf 'ibase=16;%s\n' "${candidate_hex^^}" | bc)"
+    if [[ -z "${candidate}" || "${candidate}" == "0" ]]; then
+      continue
+    fi
+    if ! is_probable_prime_dec "${candidate}" "${bits}"; then
+      continue
+    fi
+    echo "${candidate}"
+    return 0
+  done
 }
 
 cmd_hmac_sha256() {
@@ -555,6 +955,178 @@ cmd_random_bytes() {
       return 1
       ;;
   esac
+}
+
+cmd_rsa_generate() {
+  local bits=2048
+  local private_out=""
+  local public_out=""
+  local exponent=65537
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --bits)
+        [[ $# -lt 2 ]] && { usage_rsa_generate >&2; return 1; }
+        bits="$2"
+        shift 2
+        ;;
+      --private-out)
+        [[ $# -lt 2 ]] && { usage_rsa_generate >&2; return 1; }
+        private_out="$2"
+        shift 2
+        ;;
+      --public-out)
+        [[ $# -lt 2 ]] && { usage_rsa_generate >&2; return 1; }
+        public_out="$2"
+        shift 2
+        ;;
+      --exponent)
+        [[ $# -lt 2 ]] && { usage_rsa_generate >&2; return 1; }
+        exponent="$2"
+        shift 2
+        ;;
+      --help)
+        usage_rsa_generate
+        return 0
+        ;;
+      *)
+        echo "Unknown option for rsa-generate: $1" >&2
+        usage_rsa_generate >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${private_out}" || -z "${public_out}" ]]; then
+    usage_rsa_generate >&2
+    return 1
+  fi
+
+  if ! [[ "${bits}" =~ ^[0-9]+$ ]]; then
+    echo "--bits must be a positive integer" >&2
+    return 1
+  fi
+  if (( bits < 256 )); then
+    echo "--bits must be at least 256" >&2
+    return 1
+  fi
+
+  if ! [[ "${exponent}" =~ ^[0-9]+$ ]]; then
+    echo "--exponent must be a positive integer" >&2
+    return 1
+  fi
+  if (( exponent < 3 || exponent % 2 == 0 )); then
+    echo "--exponent must be an odd integer >= 3" >&2
+    return 1
+  fi
+
+  if [[ -e "${private_out}" ]]; then
+    echo "Refusing to overwrite existing file: ${private_out}" >&2
+    return 1
+  fi
+  if [[ -e "${public_out}" ]]; then
+    echo "Refusing to overwrite existing file: ${public_out}" >&2
+    return 1
+  fi
+
+  local half_bits=$(( bits / 2 ))
+  local other_bits=$(( bits - half_bits ))
+  local p_dec q_dec n_dec phi_dec d_dec dp_dec dq_dec qi_dec gcd_val
+
+  while true; do
+    p_dec="$(generate_prime_dec "${half_bits}")"
+    q_dec="$(generate_prime_dec "${other_bits}")"
+    if [[ "${p_dec}" == "${q_dec}" ]]; then
+      continue
+    fi
+    n_dec="$(printf 'scale=0; (%s) * (%s)\n' "${p_dec}" "${q_dec}" | bc)"
+    phi_dec="$(printf 'scale=0; (%s - 1) * (%s - 1)\n' "${p_dec}" "${q_dec}" | bc)"
+    gcd_val="$(bc_eval_common "gcd(${exponent}, ${phi_dec})")"
+    if [[ "${gcd_val}" != "1" ]]; then
+      continue
+    fi
+    d_dec="$(bc_eval_common "modinv(${exponent}, ${phi_dec})")"
+    dp_dec="$(printf 'scale=0; %s %% (%s - 1)\n' "${d_dec}" "${p_dec}" | bc)"
+    dq_dec="$(printf 'scale=0; %s %% (%s - 1)\n' "${d_dec}" "${q_dec}" | bc)"
+    qi_dec="$(bc_eval_common "modinv(${q_dec}, ${p_dec})")"
+    break
+  done
+
+  local n_hex d_hex p_hex q_hex dp_hex dq_hex qi_hex e_hex
+  n_hex="$(dec_to_hex "${n_dec}")"; n_hex="${n_hex,,}"
+  d_hex="$(dec_to_hex "${d_dec}")"; d_hex="${d_hex,,}"
+  p_hex="$(dec_to_hex "${p_dec}")"; p_hex="${p_hex,,}"
+  q_hex="$(dec_to_hex "${q_dec}")"; q_hex="${q_hex,,}"
+  dp_hex="$(dec_to_hex "${dp_dec}")"; dp_hex="${dp_hex,,}"
+  dq_hex="$(dec_to_hex "${dq_dec}")"; dq_hex="${dq_hex,,}"
+  qi_hex="$(dec_to_hex "${qi_dec}")"; qi_hex="${qi_hex,,}"
+  e_hex="$(dec_to_hex "${exponent}")"; e_hex="${e_hex,,}"
+
+  local pkcs1_hex pkcs8_hex spki_hex
+  pkcs1_hex="$(rsa_private_to_pkcs1_hex "${n_hex}" "${e_hex}" "${d_hex}" "${p_hex}" "${q_hex}" "${dp_hex}" "${dq_hex}" "${qi_hex}")"
+  pkcs8_hex="$(rsa_private_to_pkcs8_hex "${pkcs1_hex}")"
+  spki_hex="$(rsa_public_to_spki_hex "${n_hex}" "${e_hex}")"
+
+  local priv_pem pub_pem
+  priv_pem="$(pem_wrap_hex "PRIVATE KEY" "${pkcs8_hex}")"
+  pub_pem="$(pem_wrap_hex "PUBLIC KEY" "${spki_hex}")"
+
+  ( umask 077; printf '%s\n' "${priv_pem}" > "${private_out}" )
+  chmod 600 "${private_out}"
+  ( umask 022; printf '%s\n' "${pub_pem}" > "${public_out}" )
+  chmod 644 "${public_out}"
+}
+
+cmd_rsa_public() {
+  local key_path=""
+  local output_path=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --key)
+        [[ $# -lt 2 ]] && { usage_rsa_public >&2; return 1; }
+        key_path="$2"
+        shift 2
+        ;;
+      --output)
+        [[ $# -lt 2 ]] && { usage_rsa_public >&2; return 1; }
+        output_path="$2"
+        shift 2
+        ;;
+      --help)
+        usage_rsa_public
+        return 0
+        ;;
+      *)
+        echo "Unknown option for rsa-public: $1" >&2
+        usage_rsa_public >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${key_path}" || -z "${output_path}" ]]; then
+    usage_rsa_public >&2
+    return 1
+  fi
+
+  load_rsa_private_key "${key_path}"
+
+  local spki_hex
+  spki_hex="$(rsa_public_to_spki_hex "${RSA_PRIV_N}" "${RSA_PRIV_E}")"
+  local pem
+  pem="$(pem_wrap_hex "PUBLIC KEY" "${spki_hex}")"
+
+  if [[ "${output_path}" == "-" ]]; then
+    printf '%s\n' "${pem}"
+    return 0
+  fi
+
+  if [[ -e "${output_path}" ]]; then
+    echo "Refusing to overwrite existing file: ${output_path}" >&2
+    return 1
+  fi
+
+  ( umask 022; printf '%s\n' "${pem}" > "${output_path}" )
+  chmod 644 "${output_path}"
 }
 
 cmd_rsa_sign() {
@@ -795,6 +1367,12 @@ main() {
       ;;
     random-bytes)
       cmd_random_bytes "$@"
+      ;;
+    rsa-generate)
+      cmd_rsa_generate "$@"
+      ;;
+    rsa-public)
+      cmd_rsa_public "$@"
       ;;
     rsa-sign)
       cmd_rsa_sign "$@"
