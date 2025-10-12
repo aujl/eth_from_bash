@@ -14,6 +14,12 @@ auditable, and reproducible, follow these conventions:
   `scripts/` and call them.
 - Keep changes minimal and focused: Avoid unrelated refactors when fixing a
   task.
+- Prefer installing required dependencies over crafting bespoke workarounds.
+- Do not increase complexity for problems already solved by POSIX or shell
+  tools that can be installed as dependencies.
+- Keep declared dependencies up to date.
+- Install repository dependencies (e.g., via `make deps`) before beginning
+  implementation work.
 - Validate with `make check`: Always run the test suite locally before opening a
   PR.
 - Be explicit about dependencies: Use the Makefile and CI to install or check
