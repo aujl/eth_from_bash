@@ -136,7 +136,8 @@ The companion script `scripts/rsa_prime_churn.sh` runs the generator under
 candidates processed per keypair alongside wall-clock duration. This is useful
 when validating performance changes without touching the main CLI. Reusing the
 same `bc` session allows churn comparisons before/after tuning without noisy
-process-spawn overhead.
+process-spawn overhead. See [`docs/rsa_prime_churn_baseline.md`](docs/rsa_prime_churn_baseline.md)
+for the current baseline results and notes on reproducing the measurements.
 
 ## Notes on Keccak vs SHA‑3
 Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, Bash-based Keccak-256 implementation in `scripts/keccak256.sh`, so no external cryptography packages are required.
