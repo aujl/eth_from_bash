@@ -118,6 +118,17 @@ make deps
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
+- `scripts/rsa_prime_churn.sh`: Profile `crypto_sign.sh rsa-generate` to inspect bc usage.
+
+### RSA helper tuning
+
+`scripts/crypto_sign.sh rsa-generate` accepts `--bits` (default `2048`) and `--exponent`
+(`65537`) to control key size and public exponent selection. The helper enforces
+odd exponents ≥ 3 and regenerates primes until the Euler totient is coprime to
+the chosen exponent. The companion script `scripts/rsa_prime_churn.sh` runs the
+generator under instrumentation to report the number of `bc` operations used per
+keypair along with wall-clock duration. This is useful when validating
+performance changes without touching the main CLI.
 
 ## Notes on Keccak vs SHA‑3
 Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, Bash-based Keccak-256 implementation in `scripts/keccak256.sh`, so no external cryptography packages are required.

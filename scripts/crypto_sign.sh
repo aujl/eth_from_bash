@@ -2,6 +2,90 @@
 set -euo pipefail
 set -o noclobber
 
+declare -gA HEX_TO_DEC_CACHE=()
+declare -gA DEC_TO_HEX_CACHE=()
+
+CRYPTO_SIGN_MAIN_PID=$$
+
+SMALL_PRIME_SIEVE=(
+  3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97
+  101 103 107 109 113 127 131 137 139 149 151 157 163 167 173 179 181 191
+  193 197 199 211 223 227 229 233 239 241 251 257 263 269 271 277 281 283
+  293 307 311 313 317 331 337 347
+)
+
+CRYPTO_SIGN_TRACE_ENABLED=0
+CRYPTO_SIGN_TRACE_FILE=""
+CRYPTO_SIGN_TRACE_FILE_OWNED=0
+if [[ "${CRYPTO_SIGN_TRACE_CHURN:-0}" == "1" ]]; then
+  CRYPTO_SIGN_TRACE_ENABLED=1
+  if [[ -n "${CRYPTO_SIGN_TRACE_FILE_PATH:-}" ]]; then
+    CRYPTO_SIGN_TRACE_FILE="${CRYPTO_SIGN_TRACE_FILE_PATH}"
+    : >"${CRYPTO_SIGN_TRACE_FILE}"
+    CRYPTO_SIGN_TRACE_FILE_OWNED=0
+  else
+    if ! CRYPTO_SIGN_TRACE_FILE="$(mktemp -t crypto_sign_trace.XXXXXX)"; then
+      die "Failed to create trace scratch file"
+    fi
+    CRYPTO_SIGN_TRACE_FILE_OWNED=1
+  fi
+  crypto_sign_trace_increment() {
+    local key="$1"
+    printf '%s\n' "${key}" >>"${CRYPTO_SIGN_TRACE_FILE}"
+  }
+  crypto_sign_trace_dump() {
+    local bc_simple_count=0
+    local bc_eval_count=0
+    local generate_count=0
+    if [[ -f "${CRYPTO_SIGN_TRACE_FILE}" ]]; then
+      bc_simple_count=$(grep -c '^bc_simple$' "${CRYPTO_SIGN_TRACE_FILE}" 2>/dev/null || true)
+      bc_eval_count=$(grep -c '^bc_eval_common$' "${CRYPTO_SIGN_TRACE_FILE}" 2>/dev/null || true)
+      generate_count=$(grep -c '^generate_prime_dec$' "${CRYPTO_SIGN_TRACE_FILE}" 2>/dev/null || true)
+      if (( CRYPTO_SIGN_TRACE_FILE_OWNED )); then
+        rm -f "${CRYPTO_SIGN_TRACE_FILE}"
+      fi
+    fi
+    printf 'trace:bc_simple=%s\n' "${bc_simple_count}" >&2
+    printf 'trace:bc_eval_common=%s\n' "${bc_eval_count}" >&2
+    printf 'trace:generate_prime_dec=%s\n' "${generate_count}" >&2
+  }
+else
+  crypto_sign_trace_increment() {
+    return 0
+  }
+  crypto_sign_trace_dump() {
+    return 0
+  }
+fi
+
+cleanup_bc_common_session() {
+  local pid="${BC_COMMON_PID:-}"
+  if [[ -n "${pid}" ]]; then
+    local bc_read_fd="${BC_COMMON[0]:-}"
+    local bc_write_fd="${BC_COMMON[1]:-}"
+    if [[ -n "${bc_write_fd}" ]]; then
+      eval "exec ${bc_write_fd}>&-" 2>/dev/null || true
+    fi
+    if [[ -n "${bc_read_fd}" ]]; then
+      eval "exec ${bc_read_fd}<&-" 2>/dev/null || true
+    fi
+    wait "${pid}" 2>/dev/null || true
+    BC_COMMON_PID=""
+  fi
+}
+
+crypto_sign_global_cleanup() {
+  if [[ $$ -ne ${CRYPTO_SIGN_MAIN_PID} ]]; then
+    return 0
+  fi
+  cleanup_bc_common_session
+  if (( CRYPTO_SIGN_TRACE_ENABLED )); then
+    crypto_sign_trace_dump
+  fi
+}
+
+trap crypto_sign_global_cleanup EXIT
+
 die() {
   echo "crypto_sign.sh: $*" >&2
   exit 1
@@ -188,17 +272,70 @@ hex_to_dec() {
     printf '0\n'
     return 0
   fi
-  printf '%s\n' "$(bc_simple "ibase=16; ${hex^^}")"
+  if [[ -n "${HEX_TO_DEC_CACHE[$hex]:-}" ]]; then
+    printf '%s\n' "${HEX_TO_DEC_CACHE[$hex]}"
+    return 0
+  fi
+  local result
+  result="$(bc_simple "ibase=16; ${hex^^}")"
+  HEX_TO_DEC_CACHE["${hex}"]="${result}"
+  printf '%s\n' "${result}"
 }
 
 dec_to_hex() {
   local dec="$1"
   local hex
+  dec="$(bc_clean_output "${dec}")"
+  if [[ -n "${DEC_TO_HEX_CACHE[$dec]:-}" ]]; then
+    printf '%s\n' "${DEC_TO_HEX_CACHE[$dec]}"
+    return 0
+  fi
   hex="$(bc_simple "obase=16; ${dec}")"
   if [[ -z "${hex}" ]]; then
     hex="0"
   fi
-  printf '%s\n' "${hex,,}"
+  hex="${hex,,}"
+  DEC_TO_HEX_CACHE["${dec}"]="${hex}"
+  printf '%s\n' "${hex}"
+}
+
+hex_mod_small_prime() {
+  local hex="$1"
+  local prime="$2"
+  local mod=0
+  local i digit value
+  hex="${hex,,}"
+  for (( i = 0; i < ${#hex}; i++ )); do
+    digit="${hex:i:1}"
+    case "${digit}" in
+      [0-9])
+        value=$(( digit ))
+        ;;
+      a)
+        value=10
+        ;;
+      b)
+        value=11
+        ;;
+      c)
+        value=12
+        ;;
+      d)
+        value=13
+        ;;
+      e)
+        value=14
+        ;;
+      f)
+        value=15
+        ;;
+      *)
+        value=0
+        ;;
+    esac
+    mod=$(( ((mod << 4) + value) % prime ))
+  done
+  printf '%d\n' "${mod}"
 }
 
 modexp_bc() {
@@ -289,6 +426,79 @@ define miller_rabin(n,a){
 }
 BC_FUNCS
 
+BC_COMMON_SENTINEL="__BC_COMMON_DONE__"
+
+start_bc_common_session() {
+  if [[ -n "${BC_COMMON_PID:-}" ]] && kill -0 "${BC_COMMON_PID}" 2>/dev/null; then
+    return 0
+  fi
+  coproc BC_COMMON { bc; }
+  BC_COMMON_PID=$!
+  local bc_write_fd="${BC_COMMON[1]}"
+  printf 'scale=0\n' >&"${bc_write_fd}"
+  printf 'ibase=10\n' >&"${bc_write_fd}"
+  printf 'obase=10\n' >&"${bc_write_fd}"
+  printf '%s\n' "${BC_COMMON_FUNCS}" >&"${bc_write_fd}"
+}
+
+bc_session_eval_raw() {
+  local expr="$1"
+  ensure_bc_common_session
+  if [[ -z "${BC_COMMON_PID:-}" ]] || ! kill -0 "${BC_COMMON_PID}" 2>/dev/null; then
+    bc <<BC
+${BC_COMMON_FUNCS}
+scale=0
+${expr}
+BC
+    return 0
+  fi
+  local bc_write_fd="${BC_COMMON[1]}"
+  printf '%s\n' "${expr}" >&"${bc_write_fd}"
+  printf 'print "\n"\n' >&"${bc_write_fd}"
+  printf 'print "%s"\n' "${BC_COMMON_SENTINEL}" >&"${bc_write_fd}"
+  printf 'print "\n"\n' >&"${bc_write_fd}"
+  local output=""
+  local line
+  local bc_read_fd="${BC_COMMON[0]}"
+  while IFS= read -r line <&"${bc_read_fd}"; do
+    if [[ "${line}" == "${BC_COMMON_SENTINEL}" ]]; then
+      break
+    fi
+    if [[ -z "${line}" ]]; then
+      continue
+    fi
+    if [[ -n "${output}" ]]; then
+      output+=$'\n'
+    fi
+    output+="${line}"
+  done
+  printf '%s' "${output}"
+}
+
+bc_session_eval_isolated() {
+  local expr="$1"
+  local wrapped
+  read -r -d '' wrapped <<EOF || true
+g=ibase
+h=obase
+ibase=10
+obase=10
+${expr}
+ibase=g
+obase=h
+EOF
+  bc_session_eval_raw "${wrapped}"
+}
+
+ensure_bc_common_session() {
+  if [[ -n "${BC_COMMON_PID:-}" ]] && kill -0 "${BC_COMMON_PID}" 2>/dev/null; then
+    return 0
+  fi
+  if [[ $$ -eq ${CRYPTO_SIGN_MAIN_PID} ]]; then
+    start_bc_common_session
+  fi
+}
+
 bc_clean_output() {
   local raw="$1"
   local cleaned
@@ -298,13 +508,9 @@ bc_clean_output() {
 
 bc_eval_common() {
   local expr="$1"
+  crypto_sign_trace_increment bc_eval_common
   local bc_output
-  bc_output="$(bc <<BC
-${BC_COMMON_FUNCS}
-scale=0
-${expr}
-BC
-)"
+  bc_output="$(bc_session_eval_raw "${expr}")"
   bc_output="$(bc_clean_output "${bc_output}")"
   printf '%s\n' "${bc_output}"
 }
@@ -312,7 +518,8 @@ BC
 bc_simple() {
   local expr="$1"
   local output
-  output="$(printf 'scale=0;%s\n' "${expr}" | bc)"
+  crypto_sign_trace_increment bc_simple
+  output="$(bc_session_eval_isolated "${expr}")"
   output="$(bc_clean_output "${output}")"
   printf '%s\n' "${output}"
 }
@@ -659,7 +866,12 @@ BC_FUNCS
 bc_mod() {
   local a="$1"
   local b="$2"
-  bc_simple "(${a}) % (${b})"
+  local expr
+  expr="(${a}) % (${b})"
+  local result
+  result="$(bc_session_eval_raw "${expr}")"
+  result="$(bc_clean_output "${result}")"
+  printf '%s\n' "${result}"
 }
 
 
@@ -1370,25 +1582,67 @@ random_decimal_for_bits() {
   bc_simple "ibase=16; ${hex^^}"
 }
 
+miller_rabin_rounds_for_bits() {
+  local bits="$1"
+  if (( bits >= 4096 )); then
+    printf '3\n'
+  elif (( bits >= 3072 )); then
+    printf '4\n'
+  elif (( bits >= 2048 )); then
+    printf '5\n'
+  elif (( bits >= 1536 )); then
+    printf '5\n'
+  elif (( bits >= 1024 )); then
+    printf '5\n'
+  elif (( bits >= 512 )); then
+    printf '4\n'
+  else
+    printf '4\n'
+  fi
+}
+
+effective_miller_rabin_rounds() {
+  local bits="$1"
+  local override="${CRYPTO_SIGN_RSA_MR_ROUNDS:-}"
+  if [[ -n "${override}" ]]; then
+    if [[ "${override}" =~ ^[0-9]+$ ]] && (( override > 0 )); then
+      printf '%s\n' "${override}"
+      return 0
+    fi
+    die "CRYPTO_SIGN_RSA_MR_ROUNDS must be a positive integer"
+  fi
+  miller_rabin_rounds_for_bits "${bits}"
+}
+
 is_probable_prime_dec() {
   local candidate="$1"
   local bits="$2"
+  local candidate_hex="${3:-}"
   if [[ "${candidate}" == "2" || "${candidate}" == "3" ]]; then
     return 0
   fi
   if [[ "${candidate}" == "" ]]; then
     return 1
   fi
-  if [[ "$(bc_mod "${candidate}" 2)" == "0" ]]; then
+  if [[ -z "${candidate_hex}" ]]; then
+    candidate_hex="$(dec_to_hex "${candidate}")"
+  fi
+  candidate_hex="${candidate_hex,,}"
+  local last_nibble="${candidate_hex: -1}"
+  case "${last_nibble}" in
+    0|2|4|6|8|a|c|e)
+      return 1
+      ;;
+  esac
+  if [[ "${candidate_hex}" == "" ]]; then
     return 1
   fi
-  local small_primes=(3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97)
   local prime mod
-  for prime in "${small_primes[@]}"; do
+  for prime in "${SMALL_PRIME_SIEVE[@]}"; do
     if [[ "${candidate}" == "${prime}" ]]; then
       return 0
     fi
-    mod="$(bc_mod "${candidate}" "${prime}")"
+    mod="$(hex_mod_small_prime "${candidate_hex}" "${prime}")"
     if [[ "${mod}" == "0" ]]; then
       return 1
     fi
@@ -1396,7 +1650,8 @@ is_probable_prime_dec() {
   if (( bits <= 2 )); then
     return 1
   fi
-  local rounds=4
+  local rounds
+  rounds="$(effective_miller_rabin_rounds "${bits}")"
   local i
   for (( i = 0; i < rounds; i++ )); do
     local random_dec
@@ -1434,6 +1689,7 @@ EOF
 
 generate_prime_dec() {
   local bits="$1"
+  crypto_sign_trace_increment generate_prime_dec
   while true; do
     local candidate_hex
     candidate_hex="$(generate_candidate_hex "${bits}")"
@@ -1442,7 +1698,7 @@ generate_prime_dec() {
     if [[ -z "${candidate}" || "${candidate}" == "0" ]]; then
       continue
     fi
-    if ! is_probable_prime_dec "${candidate}" "${bits}"; then
+    if ! is_probable_prime_dec "${candidate}" "${bits}" "${candidate_hex}"; then
       continue
     fi
     echo "${candidate}"
@@ -1632,8 +1888,9 @@ cmd_rsa_generate() {
     echo "--bits must be a positive integer" >&2
     return 1
   fi
-  if (( bits < 256 )); then
-    echo "--bits must be at least 256" >&2
+  local min_bits="${CRYPTO_SIGN_RSA_MIN_BITS:-256}"
+  if (( bits < min_bits )); then
+    echo "--bits must be at least ${min_bits}" >&2
     return 1
   fi
 
@@ -1654,6 +1911,8 @@ cmd_rsa_generate() {
     echo "Refusing to overwrite existing file: ${public_out}" >&2
     return 1
   fi
+
+  ensure_bc_common_session
 
   local half_bits=$(( bits / 2 ))
   local other_bits=$(( bits - half_bits ))
@@ -2025,6 +2284,8 @@ cmd_ecdsa_sign() {
     return 1
   fi
 
+  ensure_bc_common_session
+
   load_ecdsa_private_key "${key_path}"
 
   local digest_hex
@@ -2148,6 +2409,8 @@ cmd_ecdsa_verify() {
     usage_ecdsa_verify >&2
     return 1
   fi
+
+  ensure_bc_common_session
 
   load_ecdsa_public_key "${key_path}"
 
@@ -2349,6 +2612,7 @@ main() {
     usage >&2
     return 1
   fi
+  ensure_bc_common_session
   local command="$1"
   shift
   case "${command}" in
