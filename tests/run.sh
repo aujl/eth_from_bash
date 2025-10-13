@@ -12,6 +12,7 @@ SCRIPTS=(
   core_flow.sh
   crypto_kdf_vectors.sh
   crypto_sign_regression.sh
+  crypto_sign_primality_tuning.sh
   keccak_primitive.sh
   secp256k1_primitive.sh
 )
