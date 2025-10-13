@@ -361,8 +361,10 @@ BC
   if (( ${#coords[@]} != 2 )); then
     return 1
   fi
-  local x_hex="$(dec_to_hex "${coords[0]}")"
-  local y_hex="$(dec_to_hex "${coords[1]}")"
+  local x_hex
+  x_hex="$(dec_to_hex "${coords[0]}")"
+  local y_hex
+  y_hex="$(dec_to_hex "${coords[1]}")"
   x_hex="${x_hex,,}"
   y_hex="${y_hex,,}"
   printf '%s %s\n' "${x_hex}" "${y_hex}"
@@ -415,21 +417,25 @@ BC
   if (( ${#coords[@]} != 2 )); then
     return 1
   fi
-  local x_hex="$(dec_to_hex "${coords[0]}")"
-  local y_hex="$(dec_to_hex "${coords[1]}")"
+  local x_hex
+  x_hex="$(dec_to_hex "${coords[0]}")"
+  local y_hex
+  y_hex="$(dec_to_hex "${coords[1]}")"
   x_hex="${x_hex,,}"
   y_hex="${y_hex,,}"
   printf '%s %s\n' "${x_hex}" "${y_hex}"
 }
 
 secp_int2octets() {
-  local value_hex="$(normalize_hex "$1")"
+  local value_hex
+  value_hex="$(normalize_hex "$1")"
   value_hex="${value_hex,,}"
   printf '%064s\n' "${value_hex}" | tr ' ' '0'
 }
 
 secp_bits2octets() {
-  local digest_hex="$(normalize_hex "$1")"
+  local digest_hex
+  digest_hex="$(normalize_hex "$1")"
   local digest_dec
   digest_dec="$(hex_to_dec "${digest_hex}")"
   local mod_dec
@@ -441,8 +447,10 @@ secp_bits2octets() {
 }
 
 hmac_sha256_hex_internal() {
-  local key_hex="$(normalize_hex "$1")"
-  local message_hex="$(normalize_hex "$2")"
+  local key_hex
+  key_hex="$(normalize_hex "$1")"
+  local message_hex
+  message_hex="$(normalize_hex "$2")"
   local block_size=64
   local key_len_bytes=$(( ${#key_hex} / 2 ))
   if (( key_len_bytes > block_size )); then
@@ -466,9 +474,12 @@ hmac_sha256_hex_internal() {
 }
 
 rfc6979_generate_k() {
-  local priv_hex="$(secp_int2octets "$1")"
-  local digest_hex="$(normalize_hex "$2")"
-  local h1_hex="$(secp_bits2octets "${digest_hex}")"
+  local priv_hex
+  priv_hex="$(secp_int2octets "$1")"
+  local digest_hex
+  digest_hex="$(normalize_hex "$2")"
+  local h1_hex
+  h1_hex="$(secp_bits2octets "${digest_hex}")"
   local V
   V="$(printf '01%.0s' {1..32})"
   local K
@@ -899,14 +910,16 @@ parse_ecdsa_private_der() {
   local seq_hex="${DER_SEQUENCE_HEX}"
   local offset=0
   der_read_integer "${seq_hex}" "${offset}"
-  local version="$(hex_to_dec "${DER_INTEGER_HEX}")"
+  local version
+  version="$(hex_to_dec "${DER_INTEGER_HEX}")"
   offset="${DER_NEXT_OFFSET}"
   [[ "${version}" == "1" ]] || die "DER: unsupported EC private key version"
   der_read_octet_string "${seq_hex}" "${offset}"
   local priv_hex="${DER_OCTET_HEX,,}"
   offset="${DER_NEXT_OFFSET}"
   priv_hex="$(printf '%064s' "${priv_hex}" | tr ' ' '0')"
-  local priv_dec="$(hex_to_dec "${priv_hex}")"
+  local priv_dec
+  priv_dec="$(hex_to_dec "${priv_hex}")"
   if [[ $(bc_simple "(${priv_dec} <= 0) || (${priv_dec} >= ${SECP256K1_N_DEC})") -eq 1 ]]; then
     die "EC private key scalar out of range"
   fi
@@ -1044,7 +1057,6 @@ SECP256K1_GY_HEX="483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4
 SECP256K1_OID="1.3.132.0.10"
 EC_PUBLIC_OID="1.2.840.10045.2.1"
 
-SECP256K1_P_DEC="$(hex_to_dec "${SECP256K1_P_HEX}")"
 SECP256K1_N_DEC="$(hex_to_dec "${SECP256K1_N_HEX}")"
 SECP256K1_HALF_N_DEC="$(bc_simple "${SECP256K1_N_DEC} / 2")"
 
@@ -1086,7 +1098,13 @@ der_encode_integer_hex() {
   if [[ -z "${value}" ]]; then
     value="00"
   fi
-  while [[ ${#value} > 2 && ${value:0:2} == "00" && $((16#${value:2:2})) < 0x80 ]]; do
+  while (( ${#value} > 2 )); do
+    if [[ ${value:0:2} != "00" ]]; then
+      break
+    fi
+    if (( 16#${value:2:2} >= 0x80 )); then
+      break
+    fi
     value="${value:2}"
   done
   if (( 16#${value:0:2} >= 0x80 )); then
@@ -1179,14 +1197,22 @@ rsa_digest_info_hex() {
 }
 
 rsa_private_to_pkcs1_hex() {
-  local n_hex="$(normalize_hex "$1")"
-  local e_hex="$(normalize_hex "$2")"
-  local d_hex="$(normalize_hex "$3")"
-  local p_hex="$(normalize_hex "$4")"
-  local q_hex="$(normalize_hex "$5")"
-  local dp_hex="$(normalize_hex "$6")"
-  local dq_hex="$(normalize_hex "$7")"
-  local qi_hex="$(normalize_hex "$8")"
+  local n_hex
+  n_hex="$(normalize_hex "$1")"
+  local e_hex
+  e_hex="$(normalize_hex "$2")"
+  local d_hex
+  d_hex="$(normalize_hex "$3")"
+  local p_hex
+  p_hex="$(normalize_hex "$4")"
+  local q_hex
+  q_hex="$(normalize_hex "$5")"
+  local dp_hex
+  dp_hex="$(normalize_hex "$6")"
+  local dq_hex
+  dq_hex="$(normalize_hex "$7")"
+  local qi_hex
+  qi_hex="$(normalize_hex "$8")"
   der_encode_sequence_hex \
     "$(der_encode_integer_hex "00")" \
     "$(der_encode_integer_hex "${n_hex}")" \
@@ -1208,8 +1234,10 @@ rsa_private_to_pkcs8_hex() {
 }
 
 rsa_public_to_spki_hex() {
-  local n_hex="$(normalize_hex "$1")"
-  local e_hex="$(normalize_hex "$2")"
+  local n_hex
+  n_hex="$(normalize_hex "$1")"
+  local e_hex
+  e_hex="$(normalize_hex "$2")"
   local public_seq
   public_seq="$(der_encode_sequence_hex "$(der_encode_integer_hex "${n_hex}")" "$(der_encode_integer_hex "${e_hex}")")"
   der_encode_sequence_hex \
@@ -1224,11 +1252,14 @@ ec_algorithm_identifier_hex() {
 }
 
 ec_private_to_der_hex() {
-  local priv_hex="$(normalize_hex "$1")"
+  local priv_hex
+  priv_hex="$(normalize_hex "$1")"
   priv_hex="$(printf '%064s' "${priv_hex}" | tr ' ' '0')"
-  local pub_x="$(normalize_hex "$2")"
+  local pub_x
+  pub_x="$(normalize_hex "$2")"
   pub_x="$(printf '%064s' "${pub_x}" | tr ' ' '0')"
-  local pub_y="$(normalize_hex "$3")"
+  local pub_y
+  pub_y="$(normalize_hex "$3")"
   pub_y="$(printf '%064s' "${pub_y}" | tr ' ' '0')"
   local params
   params="$(der_encode_tlv_hex "a0" "$(der_encode_object_identifier_hex "${SECP256K1_OID}")")"
@@ -1243,9 +1274,11 @@ ec_private_to_der_hex() {
 }
 
 ec_public_to_spki_hex() {
-  local pub_x="$(normalize_hex "$1")"
+  local pub_x
+  pub_x="$(normalize_hex "$1")"
   pub_x="$(printf '%064s' "${pub_x}" | tr ' ' '0')"
-  local pub_y="$(normalize_hex "$2")"
+  local pub_y
+  pub_y="$(normalize_hex "$2")"
   pub_y="$(printf '%064s' "${pub_y}" | tr ' ' '0')"
   local alg
   alg="$(ec_algorithm_identifier_hex)"
@@ -1283,7 +1316,8 @@ generate_secp_private_hex() {
     candidate_hex="$(random_hex_bytes 32)"
     candidate_hex="${candidate_hex,,}"
     candidate_hex="$(printf '%064s' "${candidate_hex}" | tr ' ' '0')"
-    local candidate_dec="$(hex_to_dec "${candidate_hex}")"
+    local candidate_dec
+    candidate_dec="$(hex_to_dec "${candidate_hex}")"
     if [[ "${candidate_dec}" == "0" ]]; then
       continue
     fi
@@ -1319,7 +1353,8 @@ generate_candidate_hex() {
   local last_index=$(( ${#hex} - 2 ))
   local last_byte=$((16#${hex:last_index:2} ))
   last_byte=$((last_byte | 0x01))
-  local last_hex=$(printf '%02x' "${last_byte}")
+    local last_hex
+    last_hex=$(printf '%02x' "${last_byte}")
   hex="${hex:0:last_index}${last_hex}"
   echo "${hex}"
 }
@@ -2008,23 +2043,29 @@ cmd_ecdsa_sign() {
 
   local k_hex
   k_hex="$(rfc6979_generate_k "${ECDSA_PRIV_SCALAR_HEX}" "${digest_hex}")"
-  local r_point_x r_point_y
-  read -r r_point_x r_point_y < <(secp_point_mul "${k_hex}" "${SECP256K1_GX_HEX}" "${SECP256K1_GY_HEX}")
+  local r_point_x
+  read -r r_point_x _ < <(secp_point_mul "${k_hex}" "${SECP256K1_GX_HEX}" "${SECP256K1_GY_HEX}")
   [[ "${r_point_x}" != "INF" && -n "${r_point_x}" ]] || die "Failed to compute ECDSA nonce point"
   local r_point_dec
   r_point_dec="$(hex_to_dec "${r_point_x}")"
-  local r_dec="$(bc_simple "(${r_point_dec}) % (${SECP256K1_N_DEC})")"
+  local r_dec
+  r_dec="$(bc_simple "(${r_point_dec}) % (${SECP256K1_N_DEC})")"
   if [[ "${r_dec}" == "0" ]]; then
     die "Deterministic nonce produced invalid r"
   fi
-  local k_dec="$(hex_to_dec "${k_hex}")"
-  local k_inv_dec="$(bc_eval_common "modinv(${k_dec}, ${SECP256K1_N_DEC})")"
+  local k_dec
+  k_dec="$(hex_to_dec "${k_hex}")"
+  local k_inv_dec
+  k_inv_dec="$(bc_eval_common "modinv(${k_dec}, ${SECP256K1_N_DEC})")"
   if [[ -z "${k_inv_dec}" || "${k_inv_dec}" == "0" ]]; then
     die "Failed to invert deterministic nonce"
   fi
-  local z_hex="$(secp_bits2octets "${digest_hex}")"
-  local z_dec="$(hex_to_dec "${z_hex}")"
-  local priv_dec="$(hex_to_dec "${ECDSA_PRIV_SCALAR_HEX}")"
+  local z_hex
+  z_hex="$(secp_bits2octets "${digest_hex}")"
+  local z_dec
+  z_dec="$(hex_to_dec "${z_hex}")"
+  local priv_dec
+  priv_dec="$(hex_to_dec "${ECDSA_PRIV_SCALAR_HEX}")"
   local r_mod_priv
   r_mod_priv="$(bc_simple "(${r_dec} * ${priv_dec}) % ${SECP256K1_N_DEC}")"
   local sum_dec
@@ -2037,8 +2078,10 @@ cmd_ecdsa_sign() {
   if [[ $(bc_simple "${s_dec} > ${SECP256K1_HALF_N_DEC}") -eq 1 ]]; then
     s_dec="$(bc_simple "${SECP256K1_N_DEC} - ${s_dec}")"
   fi
-  local r_hex="$(dec_to_hex "${r_dec}")"
-  local s_hex="$(dec_to_hex "${s_dec}")"
+  local r_hex
+  r_hex="$(dec_to_hex "${r_dec}")"
+  local s_hex
+  s_hex="$(dec_to_hex "${s_dec}")"
   r_hex="$(printf '%064s' "${r_hex,,}" | tr ' ' '0')"
   s_hex="$(printf '%064s' "${s_hex,,}" | tr ' ' '0')"
   local sig_hex
@@ -2129,8 +2172,10 @@ cmd_ecdsa_verify() {
     return 1
   fi
   parse_ecdsa_signature_der "${signature_hex}"
-  local r_dec="$(hex_to_dec "${ECDSA_SIG_R_HEX}")"
-  local s_dec="$(hex_to_dec "${ECDSA_SIG_S_HEX}")"
+  local r_dec
+  r_dec="$(hex_to_dec "${ECDSA_SIG_R_HEX}")"
+  local s_dec
+  s_dec="$(hex_to_dec "${ECDSA_SIG_S_HEX}")"
   if [[ $(bc_simple "(${r_dec} <= 0) || (${r_dec} >= ${SECP256K1_N_DEC})") -eq 1 ]]; then
     echo "verification failed" >&2
     return 1
@@ -2139,17 +2184,24 @@ cmd_ecdsa_verify() {
     echo "verification failed" >&2
     return 1
   fi
-  local z_hex="$(secp_bits2octets "${digest_hex}")"
-  local z_dec="$(hex_to_dec "${z_hex}")"
-  local s_inv_dec="$(bc_eval_common "modinv(${s_dec}, ${SECP256K1_N_DEC})")"
+  local z_hex
+  z_hex="$(secp_bits2octets "${digest_hex}")"
+  local z_dec
+  z_dec="$(hex_to_dec "${z_hex}")"
+  local s_inv_dec
+  s_inv_dec="$(bc_eval_common "modinv(${s_dec}, ${SECP256K1_N_DEC})")"
   if [[ -z "${s_inv_dec}" || "${s_inv_dec}" == "0" ]]; then
     echo "verification failed" >&2
     return 1
   fi
-  local u1_dec="$(bc_simple "(${z_dec} * ${s_inv_dec}) % ${SECP256K1_N_DEC}")"
-  local u2_dec="$(bc_simple "(${r_dec} * ${s_inv_dec}) % ${SECP256K1_N_DEC}")"
-  local u1_hex="$(printf '%064s' "$(dec_to_hex "${u1_dec}")" | tr ' ' '0' | tr 'A-Z' 'a-z')"
-  local u2_hex="$(printf '%064s' "$(dec_to_hex "${u2_dec}")" | tr ' ' '0' | tr 'A-Z' 'a-z')"
+  local u1_dec
+  u1_dec="$(bc_simple "(${z_dec} * ${s_inv_dec}) % ${SECP256K1_N_DEC}")"
+  local u2_dec
+  u2_dec="$(bc_simple "(${r_dec} * ${s_inv_dec}) % ${SECP256K1_N_DEC}")"
+  local u1_hex
+  u1_hex="$(printf '%064s' "$(dec_to_hex "${u1_dec}")" | tr ' ' '0' | tr 'A-Z' 'a-z')"
+  local u2_hex
+  u2_hex="$(printf '%064s' "$(dec_to_hex "${u2_dec}")" | tr ' ' '0' | tr 'A-Z' 'a-z')"
   local p1x p1y
   read -r p1x p1y < <(secp_point_mul "${u1_hex}" "${SECP256K1_GX_HEX}" "${SECP256K1_GY_HEX}")
   local p2x p2y
@@ -2172,7 +2224,8 @@ cmd_ecdsa_verify() {
   fi
   local sum_x_dec
   sum_x_dec="$(hex_to_dec "${sum_x}")"
-  local v_dec="$(bc_simple "(${sum_x_dec}) % (${SECP256K1_N_DEC})")"
+  local v_dec
+  v_dec="$(bc_simple "(${sum_x_dec}) % (${SECP256K1_N_DEC})")"
   if [[ "${v_dec}" == "${r_dec}" ]]; then
     return 0
   fi
@@ -2221,16 +2274,21 @@ cmd_ecdsa_generate() {
     return 1
   fi
 
-  local priv_hex="$(generate_secp_private_hex)"
+  local priv_hex
+  priv_hex="$(generate_secp_private_hex)"
   local pub_x pub_y
   read -r pub_x pub_y < <(secp_point_mul "${priv_hex}" "${SECP256K1_GX_HEX}" "${SECP256K1_GY_HEX}")
   [[ "${pub_x}" != "INF" && -n "${pub_x}" ]] || die "Failed to derive secp256k1 public key"
   pub_x="$(printf '%064s' "${pub_x}" | tr ' ' '0')"
   pub_y="$(printf '%064s' "${pub_y}" | tr ' ' '0')"
-  local priv_der="$(ec_private_to_der_hex "${priv_hex}" "${pub_x}" "${pub_y}")"
-  local pub_spki="$(ec_public_to_spki_hex "${pub_x}" "${pub_y}")"
-  local priv_pem="$(pem_wrap_hex "EC PRIVATE KEY" "${priv_der}")"
-  local pub_pem="$(pem_wrap_hex "PUBLIC KEY" "${pub_spki}")"
+  local priv_der
+  priv_der="$(ec_private_to_der_hex "${priv_hex}" "${pub_x}" "${pub_y}")"
+  local pub_spki
+  pub_spki="$(ec_public_to_spki_hex "${pub_x}" "${pub_y}")"
+  local priv_pem
+  priv_pem="$(pem_wrap_hex "EC PRIVATE KEY" "${priv_der}")"
+  local pub_pem
+  pub_pem="$(pem_wrap_hex "PUBLIC KEY" "${pub_spki}")"
   ( umask 077; printf '%s\n' "${priv_pem}" > "${private_out}" )
   chmod 600 "${private_out}"
   ( umask 022; printf '%s\n' "${pub_pem}" > "${public_out}" )
@@ -2270,8 +2328,10 @@ cmd_ecdsa_public() {
   fi
 
   load_ecdsa_private_key "${key_path}"
-  local spki_hex="$(ec_public_to_spki_hex "${ECDSA_PRIV_PUB_X_HEX}" "${ECDSA_PRIV_PUB_Y_HEX}")"
-  local pem="$(pem_wrap_hex "PUBLIC KEY" "${spki_hex}")"
+  local spki_hex
+  spki_hex="$(ec_public_to_spki_hex "${ECDSA_PRIV_PUB_X_HEX}" "${ECDSA_PRIV_PUB_Y_HEX}")"
+  local pem
+  pem="$(pem_wrap_hex "PUBLIC KEY" "${spki_hex}")"
   if [[ "${output_path}" == "-" ]]; then
     printf '%s\n' "${pem}"
     return 0
