@@ -139,6 +139,15 @@ same `bc` session allows churn comparisons before/after tuning without noisy
 process-spawn overhead. See [`docs/rsa_prime_churn_baseline.md`](docs/rsa_prime_churn_baseline.md)
 for the current baseline results and notes on reproducing the measurements.
 
+For bigint microbenchmarks, `scripts/dev_compare_bigint.sh` compares the
+resident `bc` helpers against a Python backend using the same randomized test
+vectors. On Debian bookworm (bc 1.07.1, Python 3.11) the script observed bc
+spending ~9.9 s total (~0.40 s/op) on `modexp` while Python needed ~0.49 s
+(~0.02 s/op), but `gcd`/`modinv` remained within a few hundred milliseconds for
+both backends. Those numbers suggest future work could embed Python to offload
+expensive exponentiations while leaving the lightweight arithmetic inside the
+existing bc coprocess.
+
 ## Notes on Keccak vs SHA‑3
 Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, Bash-based Keccak-256 implementation in `scripts/keccak256.sh`, so no external cryptography packages are required.
 
