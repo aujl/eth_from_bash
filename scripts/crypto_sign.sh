@@ -11,7 +11,12 @@ SMALL_PRIME_SIEVE=(
   3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97
   101 103 107 109 113 127 131 137 139 149 151 157 163 167 173 179 181 191
   193 197 199 211 223 227 229 233 239 241 251 257 263 269 271 277 281 283
-  293 307 311 313 317 331 337 347
+  293 307 311 313 317 331 337 347 349 353 359 367 373 379 383 389 397 401
+  409 419 421 431 433 439 443 449 457 461 463 467 479 487 491 499 503 509
+  521 523 541 547 557 563 569 571 577 587 593 599 601 607 613 617 619 631
+  641 643 647 653 659 661 673 677 683 691 701 709 719 727 733 739 743 751
+  757 761 769 773 787 797 809 811 821 823 827 829 839 853 857 859 863 877
+  881 883 887 907 911 919 929 937 941 947 953 967 971 977 983 991 997
 )
 
 CRYPTO_SIGN_TRACE_ENABLED=0
@@ -426,6 +431,18 @@ define miller_rabin(n,a){
 }
 BC_FUNCS
 
+read -r -d '' BC_PRIME_FUNCS <<'BC_PRIME_FUNCS' || true
+define prime_mr_trial(n, rand){
+  if(n<=3){
+    if(n==2||n==3) return 1;
+    return 0;
+  }
+  if(n%2==0) return 0;
+  if(rand<=1 || rand>=n-1) rand=(rand%(n-3))+2;
+  return miller_rabin(n, rand);
+}
+BC_PRIME_FUNCS
+
 BC_COMMON_SENTINEL="__BC_COMMON_DONE__"
 
 start_bc_common_session() {
@@ -439,6 +456,7 @@ start_bc_common_session() {
   printf 'ibase=10\n' >&"${bc_write_fd}"
   printf 'obase=10\n' >&"${bc_write_fd}"
   printf '%s\n' "${BC_COMMON_FUNCS}" >&"${bc_write_fd}"
+  printf '%s\n' "${BC_PRIME_FUNCS}" >&"${bc_write_fd}"
 }
 
 bc_session_eval_raw() {
@@ -447,6 +465,7 @@ bc_session_eval_raw() {
   if [[ -z "${BC_COMMON_PID:-}" ]] || ! kill -0 "${BC_COMMON_PID}" 2>/dev/null; then
     bc <<BC
 ${BC_COMMON_FUNCS}
+${BC_PRIME_FUNCS}
 scale=0
 ${expr}
 BC
@@ -497,6 +516,21 @@ ensure_bc_common_session() {
   if [[ $$ -eq ${CRYPTO_SIGN_MAIN_PID} ]]; then
     start_bc_common_session
   fi
+}
+
+prime_session_mr_trial() {
+  local candidate="$1"
+  local random_dec="$2"
+  local expr
+  read -r -d '' expr <<EOF || true
+n=${candidate}
+rand=${random_dec}
+print prime_mr_trial(n, rand)
+EOF
+  local result
+  result="$(bc_eval_common "${expr}")"
+  result="$(bc_clean_output "${result}")"
+  printf '%s\n' "${result}"
 }
 
 bc_clean_output() {
@@ -1579,7 +1613,7 @@ random_decimal_for_bits() {
   if [[ -z "${hex}" ]]; then
     hex="00"
   fi
-  bc_simple "ibase=16; ${hex^^}"
+  hex_to_dec "${hex}"
 }
 
 miller_rabin_rounds_for_bits() {
@@ -1591,13 +1625,19 @@ miller_rabin_rounds_for_bits() {
   elif (( bits >= 2048 )); then
     printf '5\n'
   elif (( bits >= 1536 )); then
-    printf '5\n'
+    printf '6\n'
   elif (( bits >= 1024 )); then
-    printf '5\n'
+    printf '7\n'
+  elif (( bits >= 768 )); then
+    printf '7\n'
   elif (( bits >= 512 )); then
-    printf '4\n'
+    printf '8\n'
+  elif (( bits >= 384 )); then
+    printf '10\n'
+  elif (( bits >= 256 )); then
+    printf '12\n'
   else
-    printf '4\n'
+    printf '16\n'
   fi
 }
 
@@ -1650,6 +1690,7 @@ is_probable_prime_dec() {
   if (( bits <= 2 )); then
     return 1
   fi
+  ensure_bc_common_session
   local rounds
   rounds="$(effective_miller_rabin_rounds "${bits}")"
   local i
@@ -1659,27 +1700,8 @@ is_probable_prime_dec() {
     if [[ -z "${random_dec}" ]]; then
       random_dec=2
     fi
-    local expr
-    read -r -d '' expr <<EOF || true
-n=${candidate}
-rand=${random_dec}
-if (n <= 3) {
-  if (n == 2 || n == 3) {
-    print 1
-  } else {
-    print 0
-  }
-} else {
-  if (n % 2 == 0) {
-    print 0
-  } else {
-    if (rand <= 1 || rand >= n - 1) rand = (rand % (n - 3)) + 2;
-    print miller_rabin(n, rand)
-  }
-}
-EOF
     local result
-    result="$(bc_eval_common "${expr}")"
+    result="$(prime_session_mr_trial "${candidate}" "${random_dec}")"
     if [[ "${result}" != "1" ]]; then
       return 1
     fi
@@ -1690,11 +1712,12 @@ EOF
 generate_prime_dec() {
   local bits="$1"
   crypto_sign_trace_increment generate_prime_dec
+  ensure_bc_common_session
   while true; do
     local candidate_hex
     candidate_hex="$(generate_candidate_hex "${bits}")"
     local candidate
-    candidate="$(bc_simple "ibase=16; ${candidate_hex^^}")"
+    candidate="$(hex_to_dec "${candidate_hex}")"
     if [[ -z "${candidate}" || "${candidate}" == "0" ]]; then
       continue
     fi

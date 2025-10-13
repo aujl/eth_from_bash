@@ -124,7 +124,7 @@ main() {
   local churn_script="${ROOT_DIR}/scripts/rsa_prime_churn.sh"
   local churn_output
   churn_output="$(CRYPTO_SIGN_RSA_MIN_BITS=32 CRYPTO_SIGN_RSA_MR_ROUNDS=1 "${churn_script}" --bits 96 --exponent 3)"
-  if [[ "${churn_output}" != *"bc_simple="* || "${churn_output}" != *"bc_eval_common="* ]]; then
+  if [[ "${churn_output}" != *"bc_simple="* || "${churn_output}" != *"bc_eval_common="* || "${churn_output}" != *"generate_prime_dec="* ]]; then
     echo "FAIL: rsa_prime_churn.sh output missing bc counters" >&2
     printf '%s\n' "${churn_output}" >&2
     exit 1
