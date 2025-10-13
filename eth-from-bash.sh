@@ -11,12 +11,14 @@ CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${SCRIPT_DIR}/scripts/crypto_kdf.sh}"
 SECP256K1_HELPER="${SECP256K1_HELPER:-${SCRIPT_DIR}/scripts/secp256k1_pub.sh}"
 KECCAK_HELPER="${KECCAK_HELPER:-${SCRIPT_DIR}/scripts/keccak256.sh}"
 EIP55_HELPER="${EIP55_HELPER:-${SCRIPT_DIR}/scripts/eip55_checksum.sh}"
+CRYPTO_SIGN_HELPER="${CRYPTO_SIGN_HELPER:-${SCRIPT_DIR}/scripts/crypto_sign.sh}"
 
 export BIP39_HELPER
 export CRYPTO_KDF_HELPER
 export SECP256K1_HELPER
 export KECCAK_HELPER
 export EIP55_HELPER
+export CRYPTO_SIGN_HELPER
 
 hex_to_bits() {
   local hex=${1:-}
@@ -218,14 +220,18 @@ validate_entropy_hex(){
 
 generate_entropy_hex(){
   local hex
-  if command -v openssl >/dev/null 2>&1; then
-    if hex="$(openssl rand -hex 16 2>/dev/null)"; then
-      if [[ "${hex}" =~ ^[0-9a-fA-F]{32}$ ]]; then
-        printf '%s' "${hex,,}"
-        return 0
+  if [[ -n "${CRYPTO_SIGN_HELPER}" ]]; then
+    if command -v "${CRYPTO_SIGN_HELPER}" >/dev/null 2>&1; then
+      if hex="$(${CRYPTO_SIGN_HELPER} random-bytes --count 16 --output hex 2>/dev/null | tr -d '\r\n')"; then
+        if [[ "${hex}" =~ ^[0-9a-fA-F]{32}$ ]]; then
+          printf '%s' "${hex,,}"
+          return 0
+        fi
       fi
+      debug "crypto_sign random-bytes failed, falling back to /dev/urandom"
+    else
+      debug "Random helper '${CRYPTO_SIGN_HELPER}' unavailable; falling back to /dev/urandom"
     fi
-    debug "openssl rand failed, falling back to /dev/urandom"
   fi
   if [[ -r /dev/urandom ]]; then
     hex="$(head -c 16 /dev/urandom | xxd -p -c 16 | tr -d '\n')"
@@ -234,7 +240,7 @@ generate_entropy_hex(){
       return 0
     fi
   fi
-  echo "Unable to produce entropy: openssl rand failed and /dev/urandom unavailable" >&2
+  echo "Unable to produce entropy: crypto_sign random-bytes failed and /dev/urandom unavailable" >&2
   exit 1
 }
 

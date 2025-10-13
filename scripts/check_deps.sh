@@ -15,4 +15,4 @@ if [[ ${missing} -eq 1 ]]; then
   exit 1
 fi
 
-echo "All required CLI deps present: ${deps[*]}"
+echo "All required CLI deps present: ${deps[*]} (bc/xxd + sha256sum/sha512sum provide hashing + math primitives)"

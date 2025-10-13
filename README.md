@@ -14,7 +14,7 @@ This repo includes:
 - Seed derivation via PBKDF2-HMAC-SHA512 (2048 iters) powered by Perl Digest::SHA HMAC primitives.
 - BIP‑32 derivation with guards: skips invalid `IL >= n` or child key = 0.
 - Ethereum address: Keccak‑256 of uncompressed pubkey (no prefix), EIP‑55 checksum.
-- Non-blocking entropy sourced from `/dev/urandom` (optionally `openssl rand -hex 16` when available).
+- Non-blocking entropy sourced from the Bash helper (`scripts/crypto_sign.sh random-bytes`) with `/dev/urandom` fallback.
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
@@ -60,6 +60,7 @@ Output JSON fields:
 Helper environment variables exported by `eth-from-bash.sh` (available to tests and downstream scripts):
 - `BIP39_HELPER`: Bash wrapper around PBKDF2 seed derivation.
 - `CRYPTO_KDF_HELPER`: Bash CLI for PBKDF2 and HMAC primitives.
+- `CRYPTO_SIGN_HELPER`: Shell signing utility with entropy helpers (e.g., `random-bytes`).
 - `SECP256K1_HELPER`, `KECCAK_HELPER`, `EIP55_HELPER`: Existing secp256k1, Keccak-256, and EIP-55 utilities.
 
 ## Tests
