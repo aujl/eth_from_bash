@@ -5,16 +5,199 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export REPO_ROOT
 
-for lib in "${REPO_ROOT}/scripts/lib/bootstrap.sh" "${REPO_ROOT}/scripts/lib/common.sh"; do
+for lib in \
+  "${REPO_ROOT}/scripts/lib/bootstrap.sh" \
+  "${REPO_ROOT}/scripts/lib/common.sh" \
+  "${REPO_ROOT}/scripts/lib/bip39.sh" \
+  "${REPO_ROOT}/scripts/lib/bip32.sh"; do
   [[ -r "${lib}" ]] || continue
   # shellcheck source=/dev/null
   source "${lib}"
 done
 
-cli_entrypoint="${REPO_ROOT}/eth-from-bash.sh"
-if [[ ! -x "${cli_entrypoint}" ]]; then
-  echo "CLI entrypoint '${cli_entrypoint}' not executable" >&2
-  exit 1
+BIP39_HELPER="${BIP39_HELPER:-${REPO_ROOT}/scripts/bip39_seed.sh}"
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${REPO_ROOT}/scripts/crypto_kdf.sh}"
+SECP256K1_HELPER="${SECP256K1_HELPER:-${REPO_ROOT}/scripts/secp256k1_pub.sh}"
+KECCAK_HELPER="${KECCAK_HELPER:-${REPO_ROOT}/scripts/keccak256.sh}"
+EIP55_HELPER="${EIP55_HELPER:-${REPO_ROOT}/scripts/eip55_checksum.sh}"
+CRYPTO_SIGN_HELPER="${CRYPTO_SIGN_HELPER:-${REPO_ROOT}/scripts/crypto_sign.sh}"
+
+export BIP39_HELPER
+export CRYPTO_KDF_HELPER
+export SECP256K1_HELPER
+export KECCAK_HELPER
+export EIP55_HELPER
+export CRYPTO_SIGN_HELPER
+
+ensure_exec(){
+  local path="$1" label="$2"
+  if [[ ! -x "${path}" ]]; then
+    echo "${label} '${path}' not executable" >&2
+    exit 1
+  fi
+}
+
+ensure_exec "${BIP39_HELPER}" "Seed helper"
+ensure_exec "${CRYPTO_KDF_HELPER}" "Crypto helper"
+ensure_exec "${SECP256K1_HELPER}" "secp256k1 helper"
+ensure_exec "${KECCAK_HELPER}" "Keccak helper"
+ensure_exec "${EIP55_HELPER}" "EIP-55 helper"
+
+ENT_HEX_ENV="${ENT_HEX-}"
+MNEMONIC_ENV="${MNEMONIC-}"
+
+# options: -q|--quiet to print only JSON
+#          --mnemonic "w1 ... w12" to use provided phrase
+#          --include-seed to include seed hex in JSON
+QUIET=0
+INCLUDE_SEED=0
+USER_MNEMONIC=""
+NO_ADDRESS=0
+USE_ENV_MNEMONIC=0
+
+if [[ -n "${MNEMONIC_ENV}" ]]; then
+  USER_MNEMONIC="${MNEMONIC_ENV}"
+  USE_ENV_MNEMONIC=1
 fi
 
-exec "${cli_entrypoint}" "$@"
+if [[ "${USE_ENV_MNEMONIC}" -eq 0 ]]; then
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -q|--quiet)
+        QUIET=1; shift ;;
+      --include-seed)
+        INCLUDE_SEED=1; shift ;;
+      --mnemonic)
+        shift
+        USER_MNEMONIC="${1-}"
+        if [[ -z "${USER_MNEMONIC}" ]]; then echo "--mnemonic requires a value" >&2; exit 2; fi
+        shift ;;
+      --no-address)
+        NO_ADDRESS=1; shift ;;
+      --)
+        shift; break ;;
+      -*)
+        echo "Unknown option: $1" >&2; exit 2 ;;
+      *)
+        break ;;
+    esac
+  done
+else
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -q|--quiet)
+        QUIET=1; shift ;;
+      --include-seed)
+        INCLUDE_SEED=1; shift ;;
+      --no-address)
+        NO_ADDRESS=1; shift ;;
+      --mnemonic)
+        echo "MNEMONIC environment variable is set; remove --mnemonic" >&2
+        exit 2 ;;
+      --)
+        shift; break ;;
+      -*)
+        echo "Unknown option: $1" >&2; exit 2 ;;
+      *)
+        break ;;
+    esac
+  done
+fi
+
+debug(){ if [[ "${QUIET}" -eq 0 ]]; then echo "$@" >&2; fi }
+
+WLIST="${1:?path to english.txt}"
+shift || true
+PASSPHRASE="${*:-}"
+
+for cmd in xxd bc awk sha256sum sha512sum; do
+  command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
+done
+
+bip39_load_wordlist "${WLIST}"
+
+ENT_HEX_VALUE=""
+if [[ -n "${ENT_HEX_ENV}" ]]; then
+  if ! ENT_HEX_VALUE="$(bip39_validate_entropy_hex "${ENT_HEX_ENV}")"; then
+    exit 2
+  fi
+fi
+
+if [[ -z "${USER_MNEMONIC}" ]]; then
+  if [[ -z "${ENT_HEX_VALUE}" ]]; then
+    if ! ENT_HEX_VALUE="$(bip39_generate_entropy_hex)"; then
+      exit 1
+    fi
+  fi
+else
+  ENT_HEX_VALUE=""
+fi
+
+CS_BITS=""
+CS_NIB_HEX=""
+BIN_ENT=""
+BIN_ALL=""
+if [[ -n "${ENT_HEX_VALUE}" ]]; then
+  CS_NIB_HEX="$(bip39_checksum_nibble_hex "${ENT_HEX_VALUE}")"
+  CS_BITS="$(bip39_checksum_bits "${ENT_HEX_VALUE}")"
+  BIN_ENT="$(bip39_entropy_bits "${ENT_HEX_VALUE}")"
+  BIN_ALL="$(bip39_entropy_with_checksum_bits "${ENT_HEX_VALUE}")"
+  debug "checksum bits: ${CS_BITS}"
+  debug "checksum nib_hex: ${CS_NIB_HEX}"
+  debug "binary entropy: ${BIN_ENT}"
+  debug "${BIN_ALL}"
+fi
+
+if [[ -z "${USER_MNEMONIC}" ]]; then
+  MNEMONIC="$(bip39_build_mnemonic_from_entropy "${ENT_HEX_VALUE}")"
+else
+  if ! MNEMONIC="$(bip39_validate_mnemonic "${USER_MNEMONIC}")"; then
+    exit 2
+  fi
+fi
+
+SEED_HEX="$(${BIP39_HELPER} --mnemonic "${MNEMONIC}" --passphrase "${PASSPHRASE}")"
+
+debug "Hex Seed: ${SEED_HEX}"
+
+read -r k c < <(bip32_master_from_seed "${SEED_HEX}")
+
+PATH_SEGMENTS=("44'" "60'" "0'" "0" "0")
+DERIVATION_PATH_DISPLAY="m/44'/60'/0'/0/0"
+read -r k c < <(bip32_derive_path_segments "${k}" "${c}" "${PATH_SEGMENTS[@]}")
+
+bip32_validate_private_scalar "${k}" "final private key" || exit 1
+PRIV_HEX="${k}"
+
+debug "PK_HEX k : ${k} "
+
+ADDR_EIP55="0x"
+PUB_XY_HEX=""
+if [[ "${NO_ADDRESS}" -eq 0 ]]; then
+  read -r PUB_COMP_HEX PUB_UNCOMP_HEX < <(bip32_pub_from_private "${PRIV_HEX}")
+  debug "PUB_COMP_HEX: ${PUB_COMP_HEX}"
+  PUB_XY_HEX="${PUB_UNCOMP_HEX:2}"
+  debug "PUB_XY_HEX: ${PUB_XY_HEX}"
+fi
+
+eth_keccak256_hex(){
+  "${KECCAK_HELPER}" keccak256-hex
+}
+
+if [[ "${NO_ADDRESS}" -eq 0 ]]; then
+  HASH="$(printf "%s" "${PUB_XY_HEX}" | xxd -r -p | eth_keccak256_hex)"
+  ADDR_HEX="${HASH:24}"
+  ADDR_LC="${ADDR_HEX,,}"
+  H2="$(printf "%s" "${ADDR_LC}" | eth_keccak256_hex)"
+  debug "EIP55 base: ${ADDR_LC}"
+  debug "EIP55 h:    ${H2}"
+  ADDR_EIP55="$("${EIP55_HELPER}" "${ADDR_HEX}")"
+fi
+
+if [[ "${INCLUDE_SEED}" -eq 1 ]]; then
+  printf '{"mnemonic":"%s","path":"%s","privateKey":"0x%s","address":"%s","seed":"%s"}\n' \
+    "${MNEMONIC}" "${DERIVATION_PATH_DISPLAY}" "${PRIV_HEX}" "${ADDR_EIP55}" "${SEED_HEX}"
+else
+  printf '{"mnemonic":"%s","path":"%s","privateKey":"0x%s","address":"%s"}\n' \
+    "${MNEMONIC}" "${DERIVATION_PATH_DISPLAY}" "${PRIV_HEX}" "${ADDR_EIP55}"
+fi
