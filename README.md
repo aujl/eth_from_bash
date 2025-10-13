@@ -122,13 +122,21 @@ make deps
 
 ### RSA helper tuning
 
-`scripts/crypto_sign.sh rsa-generate` accepts `--bits` (default `2048`) and `--exponent`
-(`65537`) to control key size and public exponent selection. The helper enforces
-odd exponents ≥ 3 and regenerates primes until the Euler totient is coprime to
-the chosen exponent. The companion script `scripts/rsa_prime_churn.sh` runs the
-generator under instrumentation to report the number of `bc` operations used per
-keypair along with wall-clock duration. This is useful when validating
-performance changes without touching the main CLI.
+`scripts/crypto_sign.sh rsa-generate` accepts `--bits` (default `2048`) and
+`--exponent` (`65537`) to control key size and public exponent selection. The
+helper enforces odd exponents ≥ 3 and regenerates primes until the Euler
+totient is coprime to the chosen exponent. Prime candidates are sieved against
+all primes < 1000 before feeding a long-lived `bc` coprocess that keeps the
+Miller–Rabin helpers resident. The number of Miller–Rabin rounds is automatically
+chosen from the key size (override with `CRYPTO_SIGN_RSA_MR_ROUNDS`) and the
+minimum size gate can be tuned with `CRYPTO_SIGN_RSA_MIN_BITS`.
+
+The companion script `scripts/rsa_prime_churn.sh` runs the generator under
+`CRYPTO_SIGN_TRACE_CHURN=1` and reports the number of `bc` calls and prime
+candidates processed per keypair alongside wall-clock duration. This is useful
+when validating performance changes without touching the main CLI. Reusing the
+same `bc` session allows churn comparisons before/after tuning without noisy
+process-spawn overhead.
 
 ## Notes on Keccak vs SHA‑3
 Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, Bash-based Keccak-256 implementation in `scripts/keccak256.sh`, so no external cryptography packages are required.
