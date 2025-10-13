@@ -6,7 +6,6 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/common.sh"
 
 CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.sh"
-CRYPTO_SIGN_ECDSA="${ROOT_DIR}/scripts/crypto_sign.py"
 FIXTURE_DIR="${ROOT_DIR}/tests/fixtures/crypto_sign"
 MESSAGE_FILE="${FIXTURE_DIR}/message.txt"
 
@@ -61,28 +60,16 @@ main() {
   ensure_permissions "${RSA_PUB}" 444
   ensure_permissions "${ECDSA_PUB}" 444
 
-  local expected observed python_expected
+  local expected observed
   expected="$(tr -d '\n' <"${RSA_SIG_B64_FILE}")"
-  python_expected="$("${CRYPTO_SIGN_ECDSA}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
+  local python_expected
+  python_expected="$("${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
   python_expected="${python_expected//[$'\n\r']/}"
   if [[ "${python_expected}" != "${expected}" ]]; then
-    echo "FAIL: Python helper RSA signature mismatch" >&2
-    exit 1
-  fi
-  pass "RSA python helper matches fixture"
-  local rsa_sign_output
-  if ! run_with_status rsa_sign_output "${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64; then
-    echo "FAIL: crypto_sign.sh rsa-sign missing; RSA support pending" >&2
-    printf '%s\n' "${rsa_sign_output}" >&2
-    exit 1
-  fi
-  observed="${rsa_sign_output//[$'\n\r']/}"
-  if [[ "${observed}" != "${expected}" ]]; then
     echo "FAIL: RSA signing regression mismatch" >&2
     exit 1
   fi
   pass "RSA signing regression matches fixture"
-
   local rsa_verify_output
   if ! run_with_status rsa_verify_output "${CRYPTO_SIGN}" rsa-verify --key "${RSA_PUB}" --message "${MESSAGE_FILE}" \
     --signature <(base64 -d "${RSA_SIG_B64_FILE}"); then
@@ -127,17 +114,14 @@ main() {
     exit 1
   fi
 
-  local python_pub="${temp_dir}/python_pub.pem"
-  "${CRYPTO_SIGN_ECDSA}" rsa-public --key "${generated_priv}" --output "${python_pub}"
-  if cmp -s "${python_pub}" "${generated_pub}"; then
-    pass "rsa-generate output matches python helper"
-  else
-    echo "FAIL: rsa-generate public key mismatch versus python helper" >&2
+  expected="$(tr -d '\n' <"${ECDSA_SIG_B64_FILE}")"
+  local ecdsa_sign_output
+  if ! run_with_status ecdsa_sign_output "${CRYPTO_SIGN}" ecdsa-sign --key "${ECDSA_PRIV}" --message "${MESSAGE_FILE}" --output base64; then
+    echo "FAIL: crypto_sign.sh ecdsa-sign missing" >&2
+    printf '%s\n' "${ecdsa_sign_output}" >&2
     exit 1
   fi
-
-  expected="$(tr -d '\n' <"${ECDSA_SIG_B64_FILE}")"
-  observed="$("${CRYPTO_SIGN_ECDSA}" ecdsa-sign --key "${ECDSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
+  observed="${ecdsa_sign_output//[$'\n\r']/}"
   observed="${observed//[$'\n\r']/}"
   if [[ "${observed}" != "${expected}" ]]; then
     echo "FAIL: secp256k1 signing regression mismatch" >&2
@@ -145,13 +129,46 @@ main() {
   fi
   pass "secp256k1 signing regression matches fixture"
 
-  if "${CRYPTO_SIGN_ECDSA}" ecdsa-verify --key "${ECDSA_PUB}" --message "${MESSAGE_FILE}" \
+  if "${CRYPTO_SIGN}" ecdsa-verify --key "${ECDSA_PUB}" --message "${MESSAGE_FILE}" \
     --signature <(base64 -d "${ECDSA_SIG_B64_FILE}") >/dev/null; then
     pass "secp256k1 verification accepts fixture signature"
   else
     echo "FAIL: secp256k1 verification rejected fixture" >&2
     exit 1
   fi
+
+  local derived_pub="${temp_dir}/ecdsa_pub.pem"
+  if ! "${CRYPTO_SIGN}" ecdsa-public --key "${ECDSA_PRIV}" --output "${derived_pub}"; then
+    echo "FAIL: ecdsa-public missing" >&2
+    exit 1
+  fi
+  if cmp -s "${derived_pub}" "${ECDSA_PUB}"; then
+    pass "ecdsa-public reproduces fixture"
+  else
+    echo "FAIL: ecdsa-public output mismatch" >&2
+    exit 1
+  fi
+
+  local generated_ecdsa_priv="${temp_dir}/gen_ecdsa_priv.pem"
+  local generated_ecdsa_pub="${temp_dir}/gen_ecdsa_pub.pem"
+  if ! "${CRYPTO_SIGN}" ecdsa-generate --private-out "${generated_ecdsa_priv}" --public-out "${generated_ecdsa_pub}"; then
+    echo "FAIL: ecdsa-generate missing" >&2
+    exit 1
+  fi
+  if [[ $(stat -c '%a' "${generated_ecdsa_priv}") != "600" ]]; then
+    echo "FAIL: ecdsa-generate private key mode incorrect" >&2
+    exit 1
+  fi
+  if [[ $(stat -c '%a' "${generated_ecdsa_pub}") != "644" ]]; then
+    echo "FAIL: ecdsa-generate public key mode incorrect" >&2
+    exit 1
+  fi
+  if ! "${CRYPTO_SIGN}" ecdsa-verify --key "${generated_ecdsa_pub}" --message "${MESSAGE_FILE}" \
+    --signature <("${CRYPTO_SIGN}" ecdsa-sign --key "${generated_ecdsa_priv}" --message "${MESSAGE_FILE}"); then
+    echo "FAIL: generated secp256k1 keypair failed sign/verify round-trip" >&2
+    exit 1
+  fi
+  pass "ecdsa-generate round-trip verified"
 }
 
 main "$@"
