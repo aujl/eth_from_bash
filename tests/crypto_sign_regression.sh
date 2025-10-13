@@ -105,6 +105,32 @@ main() {
   fi
   pass "rsa-generate creates keypair with expected permissions"
 
+  local custom_priv="${temp_dir}/generated_priv_e3.pem"
+  local custom_pub="${temp_dir}/generated_pub_e3.pem"
+  if ! "${CRYPTO_SIGN}" rsa-generate --bits 512 --exponent 3 --private-out "${custom_priv}" --public-out "${custom_pub}"; then
+    echo "FAIL: rsa-generate rejected custom exponent" >&2
+    exit 1
+  fi
+  if [[ $(stat -c '%a' "${custom_priv}") != "600" ]]; then
+    echo "FAIL: rsa-generate --exponent 3 private key permissions" >&2
+    exit 1
+  fi
+  if [[ $(stat -c '%a' "${custom_pub}") != "644" ]]; then
+    echo "FAIL: rsa-generate --exponent 3 public key permissions" >&2
+    exit 1
+  fi
+  pass "rsa-generate supports custom exponent"
+
+  local churn_script="${ROOT_DIR}/scripts/rsa_prime_churn.sh"
+  local churn_output
+  churn_output="$(CRYPTO_SIGN_RSA_MIN_BITS=32 CRYPTO_SIGN_RSA_MR_ROUNDS=1 "${churn_script}" --bits 96 --exponent 3)"
+  if [[ "${churn_output}" != *"bc_simple="* || "${churn_output}" != *"bc_eval_common="* ]]; then
+    echo "FAIL: rsa_prime_churn.sh output missing bc counters" >&2
+    printf '%s\n' "${churn_output}" >&2
+    exit 1
+  fi
+  pass "rsa_prime_churn.sh reports bc counters"
+
   local derived_pub="${temp_dir}/derived_pub.pem"
   "${CRYPTO_SIGN}" rsa-public --key "${generated_priv}" --output "${derived_pub}"
   if cmp -s "${derived_pub}" "${generated_pub}"; then
