@@ -114,7 +114,7 @@ make lint
 make deps
 ```
 
-- `scripts/check_deps.sh`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`, `perl`).
+- `bin/check-deps`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`, `perl`).
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.

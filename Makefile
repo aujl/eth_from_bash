@@ -4,7 +4,7 @@ SHELL := /usr/bin/env bash
 
 # Ensure required CLI tools exist
 deps:
-	@bash scripts/check_deps.sh
+	@bin/check-deps
 
 # Runs the test suite.
 check: deps
