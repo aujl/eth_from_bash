@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export REPO_ROOT
+
+for lib in "${REPO_ROOT}/scripts/lib/bootstrap.sh" "${REPO_ROOT}/scripts/lib/common.sh"; do
+  [[ -r "${lib}" ]] || continue
+  # shellcheck source=/dev/null
+  source "${lib}"
+done
+
+check_deps_script="${REPO_ROOT}/scripts/check_deps.sh"
+if [[ ! -r "${check_deps_script}" ]]; then
+  echo "Dependency checker script '${check_deps_script}' not found" >&2
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+source "${check_deps_script}"
+
+if ! declare -F eth_from_bash::check_deps >/dev/null 2>&1; then
+  echo "Dependency checker function not available" >&2
+  exit 1
+fi
+
+eth_from_bash::check_deps "$@"
