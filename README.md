@@ -3,11 +3,15 @@
 Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using Bash with bundled helpers for Keccak, elliptic curve operations, and Bash PBKDF2/HMAC primitives backed by the Perl Digest::SHA module.
 
 This repo includes:
-- `eth-from-bash.sh`: BIP‑39 seed (PBKDF2), BIP‑32 (secp256k1) derivation for `m/44'/60'/0'/0/0`, public key → Ethereum address (Keccak‑256 + EIP‑55).
+- `bin/eth-from-bash`: CLI entrypoint that wires argument parsing, helper discovery, and JSON output together.
+- `eth-from-bash.sh`: Compatibility wrapper that forwards to `bin/eth-from-bash` for existing automation.
+- `scripts/lib/bip39.sh`: BIP‑39 entropy helpers (validation, generation, mnemonic assembly, and wordlist guards).
+- `scripts/lib/bip32.sh`: secp256k1 constants, big-number helpers, and BIP‑32 derivation routines used by the CLI and tests.
 - `scripts/crypto_kdf.sh`: Shell PBKDF2/HMAC helper backed by the Perl `Digest::SHA` module for the CLI and tests.
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
 - `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
 - `tests/load_secrets.sh`: Helper that materializes signature/HMAC secrets for the test harness.
+
 
 ## Features
 - BIP‑39 mnemonic generation (128‑bit entropy) or import via `--mnemonic`.
@@ -62,6 +66,19 @@ Helper environment variables exported by `eth-from-bash.sh` (available to tests 
 - `CRYPTO_KDF_HELPER`: Bash CLI for PBKDF2 and HMAC primitives.
 - `CRYPTO_SIGN_HELPER`: Shell signing utility with entropy helpers (e.g., `random-bytes`).
 - `SECP256K1_HELPER`, `KECCAK_HELPER`, `EIP55_HELPER`: Existing secp256k1, Keccak-256, and EIP-55 utilities.
+
+### Library layout
+
+`bin/eth-from-bash` sources the reusable helpers under `scripts/lib/` and exports their public shell functions so tests or
+downstream scripts can source the same modules:
+
+- `bip39_hex_to_bits`, `bip39_validate_entropy_hex`, `bip39_generate_entropy_hex`, `bip39_build_mnemonic_from_entropy`, and
+  related helpers live in `scripts/lib/bip39.sh`.
+- `bip32_master_from_seed`, `bip32_derive_path_segments`, the `bip32_bn_*` arithmetic helpers, and secp256k1 public key
+  utilities live in `scripts/lib/bip32.sh`.
+
+All helpers are standard Bash functions that can be consumed by tests via `source scripts/lib/bip39.sh` or
+`source scripts/lib/bip32.sh`; the CLI exports them with `export -f` to preserve compatibility for subprocesses.
 
 ## Tests
 
