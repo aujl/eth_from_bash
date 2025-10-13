@@ -13,9 +13,10 @@ PRIVATE_KEY_DIR="${PRIVATE_KEY_DIR:-$HOME/.config/eth_from_bash/maintainer}"
 KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
-CRYPTO_SIGN_RSA="${ROOT_DIR}/scripts/crypto_sign.sh"
-CRYPTO_SIGN_ECDSA="${ROOT_DIR}/scripts/crypto_sign.py"
-CRYPTO_SIGN_RANDOM="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_SH="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_RSA="${CRYPTO_SIGN_RSA:-${CRYPTO_SIGN_SH}}"
+CRYPTO_SIGN_ECDSA="${CRYPTO_SIGN_ECDSA:-${CRYPTO_SIGN_SH}}"
+CRYPTO_SIGN_RANDOM="${CRYPTO_SIGN_RANDOM:-${CRYPTO_SIGN_SH}}"
 CRYPTO_KDF="${ROOT_DIR}/scripts/crypto_kdf.sh"
 
 current_mode() {

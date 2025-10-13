@@ -62,10 +62,10 @@ main() {
 
   local expected observed
   expected="$(tr -d '\n' <"${RSA_SIG_B64_FILE}")"
-  local python_expected
-  python_expected="$("${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
-  python_expected="${python_expected//[$'\n\r']/}"
-  if [[ "${python_expected}" != "${expected}" ]]; then
+  local shell_expected
+  shell_expected="$("${CRYPTO_SIGN}" rsa-sign --key "${RSA_PRIV}" --message "${MESSAGE_FILE}" --output base64)"
+  shell_expected="${shell_expected//[$'\n\r']/}"
+  if [[ "${shell_expected}" != "${expected}" ]]; then
     echo "FAIL: RSA signing regression mismatch" >&2
     exit 1
   fi
