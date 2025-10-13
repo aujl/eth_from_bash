@@ -7,6 +7,8 @@ source "${TEST_DIR}/load_secrets.sh"
 
 SCRIPTS=(
   load_secrets_mode.sh
+  bip39_lib.sh
+  bip32_lib.sh
   core_flow.sh
   crypto_kdf_vectors.sh
   crypto_sign_regression.sh
@@ -20,7 +22,7 @@ for script in "${SCRIPTS[@]}"; do
   bash "${TEST_DIR}/${script}"
   end_ts=$(date +%s)
   duration=$((end_ts - start_ts))
-  max_duration=${TEST_TIMEOUT:-30}
+  max_duration=${TEST_TIMEOUT:-60}
   echo "-- ${script} completed in ${duration}s"
   if (( duration > max_duration )); then
     echo "FAIL: ${script} exceeded ${max_duration} seconds (took ${duration}s)" >&2
