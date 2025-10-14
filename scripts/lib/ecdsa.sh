@@ -34,52 +34,203 @@ EC_PUBLIC_OID="1.2.840.10045.2.1"
 SECP256K1_N_DEC="$(hex_to_dec "${SECP256K1_N_HEX}")"
 SECP256K1_HALF_N_DEC="$(bc_simple "${SECP256K1_N_DEC} / 2")"
 
-ECDSA_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SECP256K1_HELPER="${ECDSA_LIB_DIR}/secp256k1.py"
-
-start_secp_helper() {
-  if [[ -z "${ECDSA_SECP_HELPER_PID:-}" ]] || ! kill -0 "${ECDSA_SECP_HELPER_PID}" 2>/dev/null; then
-    [[ -x "${SECP256K1_HELPER}" ]] || die "Missing secp256k1 helper"
-    coproc ECDSA_SECP_HELPER { "${SECP256K1_HELPER}" server; }
-    ECDSA_SECP_HELPER_PID=$!
-    trap stop_secp_helper EXIT
-  fi
+read -r -d '' BC_SECP_FUNCS <<'BC_FUNCS' || true
+define modp(x) {
+  auto r;
+  r = x % p;
+  if (r < 0) r += p;
+  return r;
 }
 
-stop_secp_helper() {
-  if [[ -n "${ECDSA_SECP_HELPER_PID:-}" ]]; then
-    kill "${ECDSA_SECP_HELPER_PID}" 2>/dev/null || true
-    wait "${ECDSA_SECP_HELPER_PID}" 2>/dev/null || true
-    unset ECDSA_SECP_HELPER_PID
-  fi
+define madd(a, b) {
+  return modp(a + b);
 }
+
+define msub(a, b) {
+  auto r;
+  r = a - b;
+  r = r % p;
+  if (r < 0) r += p;
+  return r;
+}
+
+define mmul(a, b) {
+  return modp(a * b);
+}
+
+define msqr(a) {
+  return modp(a * a);
+}
+
+define minv(a) {
+  auto t0, t1, r0, r1, q0, u0;
+  a = modp(a);
+  if (a == 0) return 0;
+  t0 = 0;
+  t1 = 1;
+  r0 = p;
+  r1 = a;
+  while (r1 != 0) {
+    q0 = r0 / r1;
+    u0 = t1;
+    t1 = t0 - q0 * t1;
+    t0 = u0;
+    u0 = r1;
+    r1 = r0 - q0 * r1;
+    r0 = u0;
+  }
+  if (r0 != 1) return 0;
+  while (t0 < 0) t0 += p;
+  return t0 % p;
+}
+
+define pdouble(px, py) {
+  auto s0, n0, d0;
+  if (py == 0) {
+    t[0] = 0;
+    t[1] = 0;
+    return 1;
+  }
+  n0 = mmul(3, msqr(px));
+  d0 = mmul(2, py);
+  d0 = minv(d0);
+  if (d0 == 0) {
+    t[0] = 0;
+    t[1] = 0;
+    return 1;
+  }
+  s0 = mmul(n0, d0);
+  t[0] = msub(msub(msqr(s0), px), px);
+  t[1] = msub(mmul(s0, msub(px, t[0])), py);
+  return 0;
+}
+
+define padd(ax, ay, bx, by) {
+  auto s0, d0;
+  if (ax == bx) {
+    if (madd(ay, by) == 0) {
+      t[0] = 0;
+      t[1] = 0;
+      return 1;
+    }
+    return pdouble(ax, ay);
+  }
+  d0 = msub(bx, ax);
+  d0 = minv(d0);
+  if (d0 == 0) {
+    t[0] = 0;
+    t[1] = 0;
+    return 1;
+  }
+  s0 = mmul(msub(by, ay), d0);
+  t[0] = msub(msub(msqr(s0), ax), bx);
+  t[1] = msub(mmul(s0, msub(ax, t[0])), ay);
+  return 0;
+}
+
+define pmul(k, px, py) {
+  r[0] = 0;
+  r[1] = 0;
+  r[2] = 1;
+  q[0] = px;
+  q[1] = py;
+  q[2] = 0;
+  while (k > 0) {
+    if (k % 2 == 1) {
+      if (r[2] == 1) {
+        if (q[2] == 1) {
+          r[0] = 0;
+          r[1] = 0;
+          r[2] = 1;
+        } else {
+          r[0] = q[0];
+          r[1] = q[1];
+          r[2] = 0;
+        }
+      } else if (q[2] == 0) {
+        if (padd(r[0], r[1], q[0], q[1]) == 1) {
+          r[0] = 0;
+          r[1] = 0;
+          r[2] = 1;
+        } else {
+          r[0] = t[0];
+          r[1] = t[1];
+          r[2] = 0;
+        }
+      }
+    }
+    if (q[2] == 0) {
+      if (pdouble(q[0], q[1]) == 1) {
+        q[0] = 0;
+        q[1] = 0;
+        q[2] = 1;
+      } else {
+        q[0] = t[0];
+        q[1] = t[1];
+      }
+    }
+    k = k / 2;
+  }
+  if (r[2] == 1) {
+    pmul_inf = 1;
+  } else {
+    pmul_inf = 0;
+    pmul_x = r[0];
+    pmul_y = r[1];
+  }
+}
+BC_FUNCS
 
 secp_point_mul() {
-  local scalar_hex="${1,,}"
-  local base_x_hex="${2,,}"
-  local base_y_hex="${3,,}"
-  scalar_hex="${scalar_hex//[^0-9a-f]/}"
-  base_x_hex="${base_x_hex//[^0-9a-f]/}"
-  base_y_hex="${base_y_hex//[^0-9a-f]/}"
+  local scalar_hex="${1^^}"
+  local base_x_hex="${2^^}"
+  local base_y_hex="${3^^}"
+  scalar_hex="${scalar_hex//[^0-9A-F]/}"
+  base_x_hex="${base_x_hex//[^0-9A-F]/}"
+  base_y_hex="${base_y_hex//[^0-9A-F]/}"
   if [[ -z "${scalar_hex}" ]]; then
     scalar_hex="0"
   fi
-  start_secp_helper
-  printf 'point-mul %s %s %s\n' "${scalar_hex}" "${base_x_hex}" "${base_y_hex}" >&"${ECDSA_SECP_HELPER[1]}"
-  local output
-  if ! IFS= read -r output <&"${ECDSA_SECP_HELPER[0]}"; then
-    return 1
-  fi
-  if [[ "${output}" == "INF" ]]; then
+  local bc_output
+  bc_output="$(bc <<BC
+scale=0
+ibase=16
+p=${SECP256K1_P_HEX^^}
+bx=${base_x_hex}
+by=${base_y_hex}
+k=${scalar_hex}
+ibase=10
+${BC_SECP_FUNCS}
+dummy = pmul(k, bx, by)
+if (pmul_inf == 1) {
+  print "INF\n";
+} else {
+  pmul_x;
+  pmul_y;
+}
+BC
+)"
+  bc_output="${bc_output//$'\r'/}"
+  bc_output="${bc_output%%$'\n'}"
+  if [[ "${bc_output}" == "INF" ]]; then
     printf 'INF\n'
     return 0
   fi
-  if [[ "${output}" == "ERR" ]]; then
+  local -a coords=()
+  while IFS= read -r line; do
+    [[ -z "${line}" ]] && continue
+    coords+=("${line}")
+  done <<<"${bc_output}"
+  if (( ${#coords[@]} != 2 )); then
     return 1
   fi
-  local x_hex y_hex
-  read -r x_hex y_hex <<<"${output}"
-  printf '%s %s\n' "${x_hex,,}" "${y_hex,,}"
+  local x_hex
+  x_hex="$(dec_to_hex "${coords[0]}")"
+  local y_hex
+  y_hex="$(dec_to_hex "${coords[1]}")"
+  x_hex="${x_hex,,}"
+  y_hex="${y_hex,,}"
+  printf '%s %s\n' "${x_hex}" "${y_hex}"
 }
 
 secp_point_add() {
@@ -95,18 +246,46 @@ secp_point_add() {
     printf '%s %s\n' "${ax_hex}" "${ay_hex}"
     return 0
   fi
-  start_secp_helper
-  printf 'point-add %s %s %s %s\n' "${ax_hex}" "${ay_hex}" "${bx_hex}" "${by_hex}" >&"${ECDSA_SECP_HELPER[1]}"
-  local output
-  if ! IFS= read -r output <&"${ECDSA_SECP_HELPER[0]}"; then
+  local bc_output
+  bc_output="$(bc <<BC
+scale=0
+ibase=16
+p=${SECP256K1_P_HEX^^}
+ax=${ax_hex^^}
+ay=${ay_hex^^}
+bx=${bx_hex^^}
+by=${by_hex^^}
+ibase=10
+${BC_SECP_FUNCS}
+if (padd(ax, ay, bx, by) == 1) {
+  print "INF\n";
+} else {
+  t[0];
+  t[1];
+}
+BC
+)"
+  bc_output="${bc_output//$'\r'/}"
+  bc_output="${bc_output%%$'\n'}"
+  if [[ "${bc_output}" == "INF" ]]; then
+    printf '0 0\n'
+    return 0
+  fi
+  local -a coords=()
+  while IFS= read -r line; do
+    [[ -z "${line}" ]] && continue
+    coords+=("${line}")
+  done <<<"${bc_output}"
+  if (( ${#coords[@]} != 2 )); then
     return 1
   fi
-  if [[ "${output}" == "ERR" ]]; then
-    return 1
-  fi
-  local x_hex y_hex
-  read -r x_hex y_hex <<<"${output}"
-  printf '%s %s\n' "${x_hex,,}" "${y_hex,,}"
+  local x_hex
+  x_hex="$(dec_to_hex "${coords[0]}")"
+  local y_hex
+  y_hex="$(dec_to_hex "${coords[1]}")"
+  x_hex="${x_hex,,}"
+  y_hex="${y_hex,,}"
+  printf '%s %s\n' "${x_hex}" "${y_hex}"
 }
 
 secp_int2octets() {
@@ -225,28 +404,40 @@ parse_ecdsa_private_der() {
   local priv_dec
   priv_dec="$(hex_to_dec "${priv_hex}")"
   if [[ $(bc_simple "(${priv_dec} <= 0) || (${priv_dec} >= ${SECP256K1_N_DEC})") -eq 1 ]]; then
-    die "EC private key out of range"
+    die "EC private key scalar out of range"
   fi
-  local pub_x="" pub_y="" params_seen=0
+  local pub_x=""
+  local pub_y=""
+  local params_seen=0
   while (( offset * 2 < ${#seq_hex} )); do
     local tag="${seq_hex:offset*2:2}"
-    tag="${tag,,}"
-    der_read_tlv "${seq_hex}" "${offset}" "${tag}"
-    local explicit_tag="${DER_VALUE}"
-    offset="${DER_NEXT_OFFSET}"
-    case "${tag}" in
+    case "${tag,,}" in
       a0)
+        der_read_explicit "${seq_hex}" "${offset}" "a0"
+        local explicit_next="${DER_NEXT_OFFSET}"
+        local param_hex="${DER_EXPLICIT_HEX}"
+        local param_offset=0
+        der_read_object_identifier "${param_hex}" "${param_offset}"
+        local oid="${DER_OBJECT_IDENTIFIER}"
+        param_offset="${DER_NEXT_OFFSET}"
+        der_expect_eof "${param_hex}" "${param_offset}"
+        [[ "${oid}" == "${SECP256K1_OID}" ]] || die "EC key is not secp256k1"
         params_seen=1
-        der_read_object_identifier "${explicit_tag}" 0
-        local curve_oid="${DER_OBJECT_IDENTIFIER}"
-        [[ "${curve_oid}" == "${SECP256K1_OID}" ]] || die "EC key is not secp256k1"
+        offset="${explicit_next}"
         ;;
       a1)
-        der_read_bit_string "${explicit_tag}" 0
-        local pub_hex="${DER_BITSTRING_HEX,,}"
-        [[ ${#pub_hex} -ge 130 && ${pub_hex:0:2} == "04" ]] || die "Unsupported EC public key format"
-        pub_x="${pub_hex:2:64}"
-        pub_y="${pub_hex:66:64}"
+        der_read_explicit "${seq_hex}" "${offset}" "a1"
+        local explicit_pub_next="${DER_NEXT_OFFSET}"
+        local pub_hex="${DER_EXPLICIT_HEX}"
+        local pub_offset=0
+        der_read_bit_string "${pub_hex}" "${pub_offset}"
+        local bit_hex="${DER_BITSTRING_HEX,,}"
+        pub_offset="${DER_NEXT_OFFSET}"
+        der_expect_eof "${pub_hex}" "${pub_offset}"
+        [[ ${#bit_hex} -ge 130 && ${bit_hex:0:2} == "04" ]] || die "Unsupported EC public key format"
+        pub_x="${bit_hex:2:64}"
+        pub_y="${bit_hex:66:64}"
+        offset="${explicit_pub_next}"
         ;;
       *)
         die "Unexpected field in EC private key"
@@ -339,18 +530,10 @@ parse_ecdsa_signature_der() {
   ECDSA_SIG_S_HEX="$(printf '%064s' "${s_hex}" | tr ' ' '0' | tr 'A-Z' 'a-z')"
 }
 
-random_hex_bytes_ecdsa() {
-  local bytes="$1"
-  if (( bytes <= 0 )); then
-    return 0
-  fi
-  od -An -N "${bytes}" -tx1 /dev/urandom | tr -d ' \n'
-}
-
 generate_secp_private_hex() {
   while true; do
     local candidate_hex
-    candidate_hex="$(random_hex_bytes_ecdsa 32)"
+    candidate_hex="$(random_hex_bytes 32)"
     candidate_hex="${candidate_hex,,}"
     candidate_hex="$(printf '%064s' "${candidate_hex}" | tr ' ' '0')"
     local candidate_dec
@@ -361,7 +544,7 @@ generate_secp_private_hex() {
     if [[ $(bc_simple "${candidate_dec} >= ${SECP256K1_N_DEC}") -eq 1 ]]; then
       continue
     fi
-    echo "${candidate_hex}"
+    printf '%s\n' "${candidate_hex}"
     return 0
   done
 }
@@ -521,13 +704,15 @@ cmd_ecdsa_sign() {
     return 1
   fi
 
+  ensure_bc_common_session
+
   load_ecdsa_private_key "${key_path}"
 
   local digest_hex
   case "${hash_name}" in
     sha256)
       if [[ "${message_path}" == "-" ]]; then
-        digest_hex="$(cat | sha256_hex_from_stream)"
+        digest_hex="$(sha256_hex_from_stream <&0)"
       else
         digest_hex="$(sha256sum "${message_path}" | cut -d' ' -f1)"
       fi
@@ -539,31 +724,35 @@ cmd_ecdsa_sign() {
 
   local k_hex
   k_hex="$(rfc6979_generate_k "${ECDSA_PRIV_SCALAR_HEX}" "${digest_hex}")"
-  local k_dec
-  k_dec="$(hex_to_dec "${k_hex}")"
-  local priv_dec
-  priv_dec="$(hex_to_dec "${ECDSA_PRIV_SCALAR_HEX}")"
-  local z_hex
-  z_hex="$(secp_bits2octets "${digest_hex}")"
-  local z_dec
-  z_dec="$(hex_to_dec "${z_hex}")"
-
-  local R_x R_y
-  read -r R_x R_y < <(secp_point_mul "${k_hex}" "${SECP256K1_GX_HEX}" "${SECP256K1_GY_HEX}")
-  [[ -n "${R_x}" && "${R_x}" != "INF" ]] || die "Failed to compute ECDSA R"
+  local r_point_x
+  read -r r_point_x _ < <(secp_point_mul "${k_hex}" "${SECP256K1_GX_HEX}" "${SECP256K1_GY_HEX}")
+  [[ "${r_point_x}" != "INF" && -n "${r_point_x}" ]] || die "Failed to compute ECDSA R"
+  local r_point_dec
+  r_point_dec="$(hex_to_dec "${r_point_x}")"
   local r_dec
-  r_dec="$(hex_to_dec "${R_x}")"
-  r_dec="$(bc_simple "${r_dec} % ${SECP256K1_N_DEC}")"
+  r_dec="$(bc_simple "(${r_point_dec}) % (${SECP256K1_N_DEC})")"
   if [[ "${r_dec}" == "0" ]]; then
     die "ECDSA r is zero"
   fi
+  local k_dec
+  k_dec="$(hex_to_dec "${k_hex}")"
   local k_inv_dec
   k_inv_dec="$(bc_eval_common "modinv(${k_dec}, ${SECP256K1_N_DEC})")"
   if [[ -z "${k_inv_dec}" || "${k_inv_dec}" == "0" ]]; then
     die "Failed to compute modular inverse for k"
   fi
+  local z_hex
+  z_hex="$(secp_bits2octets "${digest_hex}")"
+  local z_dec
+  z_dec="$(hex_to_dec "${z_hex}")"
+  local priv_dec
+  priv_dec="$(hex_to_dec "${ECDSA_PRIV_SCALAR_HEX}")"
+  local r_mod_priv
+  r_mod_priv="$(bc_simple "(${r_dec} * ${priv_dec}) % ${SECP256K1_N_DEC}")"
+  local sum_dec
+  sum_dec="$(bc_simple "(${z_dec} + ${r_mod_priv}) % ${SECP256K1_N_DEC}")"
   local s_dec
-  s_dec="$(bc_simple "(${k_inv_dec} * (${z_dec} + ${r_dec} * ${priv_dec})) % ${SECP256K1_N_DEC}")"
+  s_dec="$(bc_simple "(${k_inv_dec} * ${sum_dec}) % ${SECP256K1_N_DEC}")"
   if [[ "${s_dec}" == "0" ]]; then
     die "ECDSA s is zero"
   fi
