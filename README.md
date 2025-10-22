@@ -23,7 +23,7 @@ This repo includes:
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
-- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `jq`, `sha256sum`, `sha512sum`, `perl` (core `Digest::SHA`).
+- Bash, `awk`, `bc`, `xxd` (from `vim-common`), `jq`, `sha256sum`, `sha512sum`.
 
 On Debian/Ubuntu:
 ```
@@ -136,7 +136,7 @@ make lint
 make deps
 ```
 
-- `bin/check-deps`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`, `perl`).
+- `bin/check-deps`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`).
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 eth_from_bash::check_deps() {
   local missing=0
-  local deps=(jq bc xxd awk sha256sum sha512sum perl)
+  local deps=(jq bc xxd awk sha256sum sha512sum)
 
   for cmd in "${deps[@]}"; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
