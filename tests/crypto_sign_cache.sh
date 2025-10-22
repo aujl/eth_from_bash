@@ -48,13 +48,13 @@ main() {
     fail "crypto_sign trace file was not created"
   fi
 
-  local counts_line prefix first_hex second_hex first_dec second_dec
+  local counts_line first_hex second_hex first_dec second_dec
   counts_line="$(printf '%s\n' "${subshell_output}" | grep '^counts ' || true)"
   if [[ -z "${counts_line}" ]]; then
     printf '%s\n' "${subshell_output}" >&2
     fail "missing cache hit counters from crypto_sign subshell"
   fi
-  IFS=' ' read -r prefix first_hex second_hex first_dec second_dec <<<"${counts_line}"
+  IFS=' ' read -r _ first_hex second_hex first_dec second_dec <<<"${counts_line}"
   if [[ "${first_hex}" != "1" || "${second_hex}" != "1" ]]; then
     printf '%s\n' "${subshell_output}" >&2
     fail "expected hex_to_dec to trigger bc_simple once, counts were ${first_hex} -> ${second_hex}"

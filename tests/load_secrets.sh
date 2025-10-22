@@ -8,8 +8,12 @@ if [[ "${TEST_SECRETS_INITIALIZED:-0}" == "1" ]]; then
   return 0
 fi
 
-readonly TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly ROOT_DIR="$(readlink -f "${TESTS_DIR}/..")"
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TESTS_DIR
+
+ROOT_DIR="$(readlink -f "${TESTS_DIR}/..")"
+readonly ROOT_DIR
+export ROOT_DIR
 
 SIGNED_TEST="${SIGNED_TEST:-0}"
 UNSIGNED_TEST="${UNSIGNED_TEST:-0}"

@@ -200,14 +200,22 @@ rsa_digest_info_hex() {
 }
 
 rsa_private_to_pkcs1_hex() {
-  local n_hex="$(normalize_hex "$1")"
-  local e_hex="$(normalize_hex "$2")"
-  local d_hex="$(normalize_hex "$3")"
-  local p_hex="$(normalize_hex "$4")"
-  local q_hex="$(normalize_hex "$5")"
-  local dp_hex="$(normalize_hex "$6")"
-  local dq_hex="$(normalize_hex "$7")"
-  local qi_hex="$(normalize_hex "$8")"
+  local n_hex
+  n_hex="$(normalize_hex "$1")"
+  local e_hex
+  e_hex="$(normalize_hex "$2")"
+  local d_hex
+  d_hex="$(normalize_hex "$3")"
+  local p_hex
+  p_hex="$(normalize_hex "$4")"
+  local q_hex
+  q_hex="$(normalize_hex "$5")"
+  local dp_hex
+  dp_hex="$(normalize_hex "$6")"
+  local dq_hex
+  dq_hex="$(normalize_hex "$7")"
+  local qi_hex
+  qi_hex="$(normalize_hex "$8")"
   der_encode_sequence_hex \
     "$(der_encode_integer_hex "00")" \
     "$(der_encode_integer_hex "${n_hex}")" \
@@ -229,8 +237,10 @@ rsa_private_to_pkcs8_hex() {
 }
 
 rsa_public_to_spki_hex() {
-  local n_hex="$(normalize_hex "$1")"
-  local e_hex="$(normalize_hex "$2")"
+  local n_hex
+  n_hex="$(normalize_hex "$1")"
+  local e_hex
+  e_hex="$(normalize_hex "$2")"
   local public_seq
   public_seq="$(der_encode_sequence_hex "$(der_encode_integer_hex "${n_hex}")" "$(der_encode_integer_hex "${e_hex}")")"
   der_encode_sequence_hex \
@@ -740,12 +750,18 @@ cmd_rsa_verify() {
     return 1
   fi
 
-  local n_hex="$(normalize_hex "${RSA_PUB_N}")"
-  local e_hex="$(normalize_hex "${RSA_PUB_E}")"
-  local sig_hex="$(normalize_hex "${signature_hex}")"
-  local sig_dec="$(hex_to_dec "${sig_hex}")"
-  local n_dec="$(hex_to_dec "${n_hex}")"
-  local e_dec="$(hex_to_dec "${e_hex}")"
+  local n_hex
+  n_hex="$(normalize_hex "${RSA_PUB_N}")"
+  local e_hex
+  e_hex="$(normalize_hex "${RSA_PUB_E}")"
+  local sig_hex
+  sig_hex="$(normalize_hex "${signature_hex}")"
+  local sig_dec
+  sig_dec="$(hex_to_dec "${sig_hex}")"
+  local n_dec
+  n_dec="$(hex_to_dec "${n_hex}")"
+  local e_dec
+  e_dec="$(hex_to_dec "${e_hex}")"
   local em_dec
   em_dec="$(modexp_bc "${sig_dec}" "${e_dec}" "${n_dec}")"
   local em_hex
