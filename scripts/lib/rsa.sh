@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2154  # DER_* globals are populated by ASN.1 readers
 
 usage_rsa_sign() {
   cat <<'USAGE'
@@ -82,19 +83,14 @@ parse_rsa_private_pkcs1() {
   RSA_PRIV_D="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_P="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_Q="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_DP="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_DQ="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_QI="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_expect_eof "${seq_hex}" "${offset}"
 }

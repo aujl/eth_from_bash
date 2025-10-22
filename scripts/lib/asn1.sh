@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # DER_* globals are consumed by callers via side effects
 
 pem_block_to_hex() {
   local path="$1"

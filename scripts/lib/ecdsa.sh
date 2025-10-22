@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2154  # DER_* globals are populated by ASN.1 readers
 
 usage_ecdsa_sign() {
   cat <<'USAGE'

@@ -227,7 +227,10 @@ done
 bc_modexp_total=$(( $(date +%s%N) - bc_modexp_start ))
 
 py_modexp_start=$(date +%s%N)
-mapfile -t MODEXP_PY_RESULTS < <(
+MODEXP_PY_RESULTS=()
+while IFS= read -r line; do
+  MODEXP_PY_RESULTS+=("${line}")
+done < <(
   printf '%s\n' "${MODEXP_CASES[@]}" | python3 -c 'import sys
 for line in sys.stdin:
     line = line.strip()
@@ -249,7 +252,10 @@ done
 bc_gcd_total=$(( $(date +%s%N) - bc_gcd_start ))
 
 py_gcd_start=$(date +%s%N)
-mapfile -t GCD_PY_RESULTS < <(
+GCD_PY_RESULTS=()
+while IFS= read -r line; do
+  GCD_PY_RESULTS+=("${line}")
+done < <(
   printf '%s\n' "${GCD_CASES[@]}" | python3 -c 'import math
 import sys
 for line in sys.stdin:
@@ -271,7 +277,10 @@ done
 bc_modinv_total=$(( $(date +%s%N) - bc_modinv_start ))
 
 py_modinv_start=$(date +%s%N)
-mapfile -t MODINV_PY_RESULTS < <(
+MODINV_PY_RESULTS=()
+while IFS= read -r line; do
+  MODINV_PY_RESULTS+=("${line}")
+done < <(
   printf '%s\n' "${MODINV_CASES[@]}" | python3 -c 'import sys
 for line in sys.stdin:
     line = line.strip()
