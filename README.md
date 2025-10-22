@@ -138,7 +138,7 @@ make deps
 
 - `bin/check-deps`: Verify CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`).
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
-- `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
+- `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via on-repo bc helpers.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
 - `scripts/rsa_prime_churn.sh`: Profile `bin/crypto-sign rsa-generate` to inspect bc usage.
 
@@ -162,13 +162,10 @@ process-spawn overhead. See [`docs/rsa_prime_churn_baseline.md`](docs/rsa_prime_
 for the current baseline results and notes on reproducing the measurements.
 
 For bigint microbenchmarks, `scripts/dev_compare_bigint.sh` compares the
-resident `bc` helpers against a Python backend using the same randomized test
-vectors. On Debian bookworm (bc 1.07.1, Python 3.11) the script observed bc
-spending ~9.9 s total (~0.40 s/op) on `modexp` while Python needed ~0.49 s
-(~0.02 s/op), but `gcd`/`modinv` remained within a few hundred milliseconds for
-both backends. Those numbers suggest future work could embed Python to offload
-expensive exponentiations while leaving the lightweight arithmetic inside the
-existing bc coprocess.
+resident `bc` helpers against a standalone shell reference that performs the
+same calculations with bc primitives. Randomized test vectors are replayable by
+seed, and the benchmark now runs entirely on the repository's Bash/bc toolchain
+with no Python dependency.
 
 ## Notes on Keccak vs SHA‑3
 Ethereum uses Keccak‑256 (pre‑NIST) for addresses, not SHA3‑256. This repository ships a constant-time, Bash-based Keccak-256 implementation in `scripts/keccak256.sh`, so no external cryptography packages are required.

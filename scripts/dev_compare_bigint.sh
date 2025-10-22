@@ -1,19 +1,11 @@
 #!/usr/bin/env bash
 #
-# Benchmark the bigint helpers shared through BC_COMMON_FUNCS across the
-# existing bc coprocess and an alternative Python backend. Random test vectors
-# (seeded from /dev/urandom) are reused for each backend so we can compare
-# correctness and wall-clock latency apples-to-apples. The summary table reports
-# totals (ms) and per-case averages (µs) for each operation.
-#
-# Recent baseline (container: Debian bookworm, bc 1.07.1, Python 3.11):
-#   - modexp: bc ~9.9 s total / 0.40 s avg, Python ~0.49 s total / 0.020 s avg.
-#   - gcd:    bc ~0.31 s total / 0.012 s avg, Python ~0.49 s total / 0.020 s avg.
-#   - modinv: bc ~0.39 s total / 0.015 s avg, Python ~0.50 s total / 0.020 s avg.
-# Python crushes the heavy modexp workload (~20x faster) while bc holds up on
-# gcd/modinv. Future tuning can explore embedding Python for modexp while
-# retaining bc for the lighter helpers. For now we keep the stable bc backend
-# and land this script so regressions are measurable.
+# Benchmark the bigint helpers shared through BC_COMMON_FUNCS against a shell
+# reference implementation that exercises the same operations via bc. Random
+# test vectors (seeded from /dev/urandom or RNG_SEED) are reused for each
+# backend so we can compare correctness and wall-clock latency apples-to-apples.
+# The summary table reports totals (ms) and per-case averages (µs) for each
+# operation.
 #
 set -euo pipefail
 
@@ -122,176 +114,232 @@ seed_from_urandom() {
   od -An -tu8 -N8 /dev/urandom | tr -d ' '
 }
 
-RNG_SEED=$(seed_from_urandom)
+# Deterministic RNG based on an LCG so callers can replay runs.
+RNG_MOD="340282366920938463463374607431768211456" # 2^128
+RNG_A="6364136223846793005"
+RNG_C="1442695040888963407"
+RNG_STATE=""
+
+rng_init() {
+  local seed="$1"
+  RNG_STATE=$(bc_eval "(${seed}) % ${RNG_MOD}")
+}
+
+rng_next_u128() {
+  RNG_STATE=$(bc_eval "((${RNG_A} * ${RNG_STATE}) + ${RNG_C}) % ${RNG_MOD}")
+  printf '%s\n' "${RNG_STATE}"
+}
+
+rand_bits() {
+  local bits=$1
+  local remaining=$bits
+  local value="0"
+  while (( remaining > 0 )); do
+    local chunk=$(( remaining > 128 ? 128 : remaining ))
+    local next_state
+    next_state=$(rng_next_u128)
+    local chunk_value
+    chunk_value=$(bc_eval "${next_state} % (2^${chunk})")
+    value=$(bc_eval "(${value} * (2^${chunk})) + ${chunk_value}")
+    remaining=$(( remaining - chunk ))
+  done
+  if [[ $(bc_eval "${value} == 0") == "1" ]]; then
+    value="1"
+  fi
+  printf '%s\n' "${value}"
+}
+
+rand_odd_modulus() {
+  local bits=$1
+  local candidate
+  while :; do
+    candidate=$(rand_bits "${bits}")
+    if [[ $(bc_eval "${candidate} < 3") == "1" ]]; then
+      candidate="3"
+    fi
+    if [[ $(bc_eval "${candidate} % 2") == "0" ]]; then
+      candidate=$(bc_eval "${candidate} + 1")
+    fi
+    if [[ $(bc_eval "${candidate} % 2") == "1" ]]; then
+      printf '%s\n' "${candidate}"
+      return
+    fi
+  done
+}
+
+rand_modexp_case() {
+  local a b m
+  a=$(rand_bits 1024)
+  b=$(rand_bits 256)
+  m=$(rand_odd_modulus 1024)
+  printf '%s %s %s\n' "${a}" "${b}" "${m}"
+}
+
+rand_gcd_case() {
+  local a b
+  a=$(rand_bits 1024)
+  b=$(rand_bits 1024)
+  printf '%s %s\n' "${a}" "${b}"
+}
+
+rand_modinv_case() {
+  local m a
+  m=$(rand_odd_modulus 1024)
+  a=$(bc_eval "$(rand_bits 1024) % ${m}")
+  if [[ $(bc_eval "${a} == 0") == "1" ]]; then
+    a="1"
+  fi
+  while [[ $(bc_eval "gcd(${a},${m})") != "1" ]]; do
+    a=$(bc_eval "(${a} + 1) % ${m}")
+    if [[ $(bc_eval "${a} == 0") == "1" ]]; then
+      a="1"
+    fi
+  done
+  printf '%s %s\n' "${a}" "${m}"
+}
+
+shell_modexp() {
+  local a="$1" b="$2" m="$3"
+  if [[ $(bc_eval "${m} == 1") == "1" ]]; then
+    printf '0\n'
+    return
+  fi
+  local base
+  base=$(bc_eval "${a} % ${m}")
+  local result="1"
+  local exp="${b}"
+  while [[ $(bc_eval "${exp} > 0") == "1" ]]; do
+    if [[ $(bc_eval "${exp} % 2") == "1" ]]; then
+      result=$(bc_eval "(${result} * ${base}) % ${m}")
+    fi
+    exp=$(bc_eval "${exp} / 2")
+    base=$(bc_eval "(${base} * ${base}) % ${m}")
+  done
+  printf '%s\n' "${result}"
+}
+
+shell_gcd() {
+  local a="$1" b="$2"
+  while [[ $(bc_eval "${b} != 0") == "1" ]]; do
+    local t="${b}"
+    b=$(bc_eval "${a} % ${b}")
+    a="${t}"
+  done
+  if [[ $(bc_eval "${a} < 0") == "1" ]]; then
+    a=$(bc_eval "-${a}")
+  fi
+  printf '%s\n' "${a}"
+}
+
+shell_modinv() {
+  local a="$1" m="$2"
+  if [[ $(bc_eval "${m} == 1") == "1" ]]; then
+    printf '0\n'
+    return
+  fi
+  local m0="${m}"
+  local x0="0"
+  local x1="1"
+  local aa="${a}"
+  local mm="${m}"
+  while [[ $(bc_eval "${aa} > 1") == "1" ]]; do
+    local q
+    q=$(bc_eval "${aa} / ${mm}")
+    local t="${mm}"
+    mm=$(bc_eval "${aa} % ${mm}")
+    aa="${t}"
+    t="${x0}"
+    x0=$(bc_eval "${x1} - ${q} * ${x0}")
+    x1="${t}"
+  done
+  if [[ $(bc_eval "${x1} < 0") == "1" ]]; then
+    x1=$(bc_eval "${x1} + ${m0}")
+  fi
+  x1=$(bc_eval "${x1} % ${m0}")
+  if [[ $(bc_eval "${x1} < 0") == "1" ]]; then
+    x1=$(bc_eval "${x1} + ${m0}")
+  fi
+  printf '%s\n' "${x1}"
+}
+
+RNG_SEED=${RNG_SEED:-$(seed_from_urandom)}
 if [[ -z "${RNG_SEED}" ]]; then
   echo "Failed to draw random seed" >&2
   exit 1
 fi
-
-# Generate shared test vectors.
-mapfile -t RAW_CASES < <(
-  python3 - "$NUM_CASES" "$RNG_SEED" <<'PY'
-import math
-import random
-import sys
-
-if len(sys.argv) != 3:
-    raise SystemExit("usage: python NUM_CASES SEED")
-num_cases = int(sys.argv[1])
-seed = int(sys.argv[2])
-rng = random.Random(seed)
-
-modexp_bits = {
-    'base': 1024,
-    'exp': 256,
-    'mod': 1024,
-}
-
-def rand_bits(bits):
-    value = rng.getrandbits(bits)
-    if value == 0:
-        value = 1
-    return value
-
-for _ in range(num_cases):
-    a = rand_bits(modexp_bits['base'])
-    b = rand_bits(modexp_bits['exp'])
-    m = rand_bits(modexp_bits['mod']) | 1
-    if m < 3:
-        m = 3
-    print(f"MODEXP {a} {b} {m}")
-
-for _ in range(num_cases):
-    a = rand_bits(1024)
-    b = rand_bits(1024)
-    print(f"GCD {a} {b}")
-
-for _ in range(num_cases):
-    m = rand_bits(1024) | 1
-    if m < 3:
-        m = 3
-    a = rand_bits(1024) % m
-    if a == 0:
-        a = 1
-    while math.gcd(a, m) != 1:
-        a = (a + 1) % m
-        if a == 0:
-            a = 1
-    print(f"MODINV {a} {m}")
-PY
-)
-
-if (( ${#RAW_CASES[@]} != NUM_CASES * 3 )); then
-  echo "Unexpected number of test vectors" >&2
+if [[ ! "${RNG_SEED}" =~ ^[0-9]+$ ]]; then
+  echo "RNG_SEED must be a non-negative integer" >&2
   exit 1
 fi
 
-declare -a MODEXP_CASES=()
-declare -a GCD_CASES=()
-declare -a MODINV_CASES=()
+start_bc_backend
+rng_init "${RNG_SEED}"
 
-for entry in "${RAW_CASES[@]}"; do
-  IFS=' ' read -r tag rest <<<"${entry}"
-  case "${tag}" in
-    MODEXP)
-      MODEXP_CASES+=("${entry#MODEXP }")
-      ;;
-    GCD)
-      GCD_CASES+=("${entry#GCD }")
-      ;;
-    MODINV)
-      MODINV_CASES+=("${entry#MODINV }")
-      ;;
-    *)
-      echo "Unknown case tag: ${tag}" >&2
-      exit 1
-      ;;
-  esac
+MODEXP_CASES=()
+GCD_CASES=()
+MODINV_CASES=()
+
+for ((i = 0; i < NUM_CASES; i++)); do
+  MODEXP_CASES+=("$(rand_modexp_case)")
+  GCD_CASES+=("$(rand_gcd_case)")
+  MODINV_CASES+=("$(rand_modinv_case)")
 done
 
-start_bc_backend
+MODEXP_BC_RESULTS=()
+GCD_BC_RESULTS=()
+MODINV_BC_RESULTS=()
 
-declare -a MODEXP_BC_RESULTS=()
-declare -a GCD_BC_RESULTS=()
-declare -a MODINV_BC_RESULTS=()
-
-declare -a MODEXP_PY_RESULTS=()
-declare -a GCD_PY_RESULTS=()
-declare -a MODINV_PY_RESULTS=()
+MODEXP_SH_RESULTS=()
+GCD_SH_RESULTS=()
+MODINV_SH_RESULTS=()
 
 bc_modexp_start=$(date +%s%N)
 for case in "${MODEXP_CASES[@]}"; do
   IFS=' ' read -r a b m <<<"${case}"
   MODEXP_BC_RESULTS+=("$(bc_eval "modexp(${a},${b},${m})")")
+
 done
 bc_modexp_total=$(( $(date +%s%N) - bc_modexp_start ))
 
-py_modexp_start=$(date +%s%N)
-MODEXP_PY_RESULTS=()
-while IFS= read -r line; do
-  MODEXP_PY_RESULTS+=("${line}")
-done < <(
-  printf '%s\n' "${MODEXP_CASES[@]}" | python3 -c 'import sys
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    a_s, b_s, m_s = line.split()
-    a = int(a_s)
-    b = int(b_s)
-    m = int(m_s)
-    print(pow(a, b, m))'
-)
-py_modexp_total=$(( $(date +%s%N) - py_modexp_start ))
+sh_modexp_start=$(date +%s%N)
+for case in "${MODEXP_CASES[@]}"; do
+  IFS=' ' read -r a b m <<<"${case}"
+  MODEXP_SH_RESULTS+=("$(shell_modexp "${a}" "${b}" "${m}")")
+
+done
+sh_modexp_total=$(( $(date +%s%N) - sh_modexp_start ))
 
 bc_gcd_start=$(date +%s%N)
 for case in "${GCD_CASES[@]}"; do
   IFS=' ' read -r a b <<<"${case}"
   GCD_BC_RESULTS+=("$(bc_eval "gcd(${a},${b})")")
+
 done
 bc_gcd_total=$(( $(date +%s%N) - bc_gcd_start ))
 
-py_gcd_start=$(date +%s%N)
-GCD_PY_RESULTS=()
-while IFS= read -r line; do
-  GCD_PY_RESULTS+=("${line}")
-done < <(
-  printf '%s\n' "${GCD_CASES[@]}" | python3 -c 'import math
-import sys
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    a_s, b_s = line.split()
-    a = int(a_s)
-    b = int(b_s)
-    print(math.gcd(a, b))'
-)
-py_gcd_total=$(( $(date +%s%N) - py_gcd_start ))
+sh_gcd_start=$(date +%s%N)
+for case in "${GCD_CASES[@]}"; do
+  IFS=' ' read -r a b <<<"${case}"
+  GCD_SH_RESULTS+=("$(shell_gcd "${a}" "${b}")")
+
+done
+sh_gcd_total=$(( $(date +%s%N) - sh_gcd_start ))
 
 bc_modinv_start=$(date +%s%N)
 for case in "${MODINV_CASES[@]}"; do
   IFS=' ' read -r a m <<<"${case}"
   MODINV_BC_RESULTS+=("$(bc_eval "modinv(${a},${m})")")
+
 done
 bc_modinv_total=$(( $(date +%s%N) - bc_modinv_start ))
 
-py_modinv_start=$(date +%s%N)
-MODINV_PY_RESULTS=()
-while IFS= read -r line; do
-  MODINV_PY_RESULTS+=("${line}")
-done < <(
-  printf '%s\n' "${MODINV_CASES[@]}" | python3 -c 'import sys
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    a_s, m_s = line.split()
-    a = int(a_s)
-    m = int(m_s)
-    print(pow(a, -1, m))'
-)
-py_modinv_total=$(( $(date +%s%N) - py_modinv_start ))
+sh_modinv_start=$(date +%s%N)
+for case in "${MODINV_CASES[@]}"; do
+  IFS=' ' read -r a m <<<"${case}"
+  MODINV_SH_RESULTS+=("$(shell_modinv "${a}" "${m}")")
+
+done
+sh_modinv_total=$(( $(date +%s%N) - sh_modinv_start ))
 
 compare_results() {
   local -n arr_a=$1
@@ -313,15 +361,15 @@ compare_results() {
   fi
 }
 
-modepx_match=$(compare_results MODEXP_BC_RESULTS MODEXP_PY_RESULTS)
-gcd_match=$(compare_results GCD_BC_RESULTS GCD_PY_RESULTS)
-modinv_match=$(compare_results MODINV_BC_RESULTS MODINV_PY_RESULTS)
+modexp_match=$(compare_results MODEXP_BC_RESULTS MODEXP_SH_RESULTS)
+gcd_match=$(compare_results GCD_BC_RESULTS GCD_SH_RESULTS)
+modinv_match=$(compare_results MODINV_BC_RESULTS MODINV_SH_RESULTS)
 
 printf 'Random seed: %s\n' "${RNG_SEED}"
 printf 'Cases per operation: %d\n\n' "${NUM_CASES}"
 
-printf '%-8s | %5s | %12s | %12s | %12s | %12s | %s\n' "Op" "Cases" "bc total (ms)" "py total (ms)" "bc avg (µs)" "py avg (µs)" "match"
+printf '%-8s | %5s | %12s | %12s | %12s | %12s | %s\n' "Op" "Cases" "bc total (ms)" "sh total (ms)" "bc avg (µs)" "sh avg (µs)" "match"
 printf '%s\n' "--------------------------------------------------------------------------------------------------------------"
-printf '%-8s | %5d | %12s | %12s | %12s | %12s | %s\n' "modexp" "${NUM_CASES}" "$(format_total_ms "${bc_modexp_total}")" "$(format_total_ms "${py_modexp_total}")" "$(format_avg_us "${bc_modexp_total}" "${NUM_CASES}")" "$(format_avg_us "${py_modexp_total}" "${NUM_CASES}")" "${modepx_match}"
-printf '%-8s | %5d | %12s | %12s | %12s | %12s | %s\n' "gcd" "${NUM_CASES}" "$(format_total_ms "${bc_gcd_total}")" "$(format_total_ms "${py_gcd_total}")" "$(format_avg_us "${bc_gcd_total}" "${NUM_CASES}")" "$(format_avg_us "${py_gcd_total}" "${NUM_CASES}")" "${gcd_match}"
-printf '%-8s | %5d | %12s | %12s | %12s | %12s | %s\n' "modinv" "${NUM_CASES}" "$(format_total_ms "${bc_modinv_total}")" "$(format_total_ms "${py_modinv_total}")" "$(format_avg_us "${bc_modinv_total}" "${NUM_CASES}")" "$(format_avg_us "${py_modinv_total}" "${NUM_CASES}")" "${modinv_match}"
+printf '%-8s | %5d | %12s | %12s | %12s | %12s | %s\n' "modexp" "${NUM_CASES}" "$(format_total_ms "${bc_modexp_total}")" "$(format_total_ms "${sh_modexp_total}")" "$(format_avg_us "${bc_modexp_total}" "${NUM_CASES}")" "$(format_avg_us "${sh_modexp_total}" "${NUM_CASES}")" "${modexp_match}"
+printf '%-8s | %5d | %12s | %12s | %12s | %12s | %s\n' "gcd" "${NUM_CASES}" "$(format_total_ms "${bc_gcd_total}")" "$(format_total_ms "${sh_gcd_total}")" "$(format_avg_us "${bc_gcd_total}" "${NUM_CASES}")" "$(format_avg_us "${sh_gcd_total}" "${NUM_CASES}")" "${gcd_match}"
+printf '%-8s | %5d | %12s | %12s | %12s | %12s | %s\n' "modinv" "${NUM_CASES}" "$(format_total_ms "${bc_modinv_total}")" "$(format_total_ms "${sh_modinv_total}")" "$(format_avg_us "${bc_modinv_total}" "${NUM_CASES}")" "$(format_avg_us "${sh_modinv_total}" "${NUM_CASES}")" "${modinv_match}"
