@@ -2,7 +2,7 @@
 # Common helpers for eth_from_bash tests
 
 ROOT_DIR="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")/..")"
-SCRIPT="${ROOT_DIR}/eth-from-bash.sh"
+SCRIPT="${ROOT_DIR}/bin/eth-from-bash"
 WLIST="${ROOT_DIR}/english_bip-39.txt"
 
 pass() {

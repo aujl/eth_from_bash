@@ -7,8 +7,11 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 
 targets=(
-  tests/run.sh
+  bin/*
+  eth-from-bash.sh
   scripts/*.sh
+  scripts/lib/*.sh
+  tests/*.sh
 )
 
 # Expand globs safely

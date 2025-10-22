@@ -20,7 +20,7 @@ CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${REPO_ROOT}/scripts/crypto_kdf.sh}"
 SECP256K1_HELPER="${SECP256K1_HELPER:-${REPO_ROOT}/scripts/secp256k1_pub.sh}"
 KECCAK_HELPER="${KECCAK_HELPER:-${REPO_ROOT}/scripts/keccak256.sh}"
 EIP55_HELPER="${EIP55_HELPER:-${REPO_ROOT}/scripts/eip55_checksum.sh}"
-CRYPTO_SIGN_HELPER="${CRYPTO_SIGN_HELPER:-${REPO_ROOT}/scripts/crypto_sign.sh}"
+CRYPTO_SIGN_HELPER="${CRYPTO_SIGN_HELPER:-${REPO_ROOT}/bin/crypto-sign}"
 
 export BIP39_HELPER
 export CRYPTO_KDF_HELPER

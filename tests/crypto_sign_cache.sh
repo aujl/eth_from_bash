@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/common.sh
 source "${TESTS_DIR}/common.sh"
 
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_LIB="${ROOT_DIR}/scripts/crypto_sign.sh"
 
 main() {
   local trace_file
@@ -20,7 +20,7 @@ main() {
       export CRYPTO_SIGN_TRACE_FILE_PATH="${trace_file}"
       set -- --help
       # shellcheck source=scripts/crypto_sign.sh
-      source "${CRYPTO_SIGN}"
+      source "${CRYPTO_SIGN_LIB}"
       set --
       : >| "${CRYPTO_SIGN_TRACE_FILE_PATH}"
       hex_value="00ff"

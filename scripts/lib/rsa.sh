@@ -40,9 +40,14 @@ RSA_OID="1.2.840.113549.1.1.1"
 SHA256_OID="2.16.840.1.101.3.4.2.1"
 
 parse_rsa_algorithm_identifier() {
-  local hex="$1"
-  der_read_sequence "${hex}" 0
-  local seq_hex="${DER_SEQUENCE_HEX}"
+  local hex="${1,,}"
+  local seq_hex
+  if [[ "${hex:0:2}" == "30" ]]; then
+    der_read_sequence "${hex}" 0
+    seq_hex="${DER_SEQUENCE_HEX}"
+  else
+    seq_hex="${hex}"
+  fi
   local offset=0
   der_read_object_identifier "${seq_hex}" "${offset}"
   local oid="${DER_OBJECT_IDENTIFIER}"
@@ -747,7 +752,8 @@ cmd_rsa_verify() {
   em_hex="$(dec_to_hex "${em_dec}")"
   em_hex="$(pad_hex_left "${em_hex}" ${#n_hex})"
 
-  if [[ ${#em_hex} < 4 || ${em_hex:0:4} != "0001" ]]; then
+  local em_len=${#em_hex}
+  if (( em_len < 4 )) || [[ ${em_hex:0:4} != "0001" ]]; then
     echo "verification failed" >&2
     return 1
   fi

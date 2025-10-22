@@ -7,11 +7,39 @@ source "${TEST_DIR}/common.sh"
 
 CRYPTO_KDF_HELPER="${ROOT_DIR}/scripts/crypto_kdf.sh"
 SECP256K1_HELPER="${ROOT_DIR}/scripts/secp256k1_pub.sh"
+if [[ ! -x "${CRYPTO_KDF_HELPER}" ]]; then
+  fail "crypto_kdf helper missing at ${CRYPTO_KDF_HELPER}"
+fi
+if [[ ! -x "${SECP256K1_HELPER}" ]]; then
+  fail "secp256k1 helper missing at ${SECP256K1_HELPER}"
+fi
 export CRYPTO_KDF_HELPER
 export SECP256K1_HELPER
 
 # shellcheck source=/dev/null
 source "${ROOT_DIR}/scripts/lib/bip32.sh"
+
+add_result="$(bip32_bn_add_mod_n "0000000000000000000000000000000000000000000000000000000000000001" \
+  "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140")"
+if [[ "${add_result}" != "0000000000000000000000000000000000000000000000000000000000000000" ]]; then
+  fail "bn_add_mod_n failed modular wrap"
+fi
+
+if [[ "$(bip32_bn_ge "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141" \
+  "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141")" -ne 1 ]]; then
+  fail "bn_ge equality check failed"
+fi
+if [[ "$(bip32_bn_ge "0000000000000000000000000000000000000000000000000000000000000001" \
+  "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141")" -ne 0 ]]; then
+  fail "bn_ge ordering check failed"
+fi
+
+if [[ "$(bip32_bn_is_zero "0000000000000000000000000000000000000000000000000000000000000000")" -ne 1 ]]; then
+  fail "bn_is_zero failed for zero"
+fi
+if [[ "$(bip32_bn_is_zero "0000000000000000000000000000000000000000000000000000000000000001")" -ne 0 ]]; then
+  fail "bn_is_zero misidentified non-zero"
+fi
 
 seed_hex="c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04"
 read -r master_k master_c < <(bip32_master_from_seed "${seed_hex}")
@@ -39,8 +67,17 @@ if [[ ${#uncompressed_pub} -ne 130 || "${uncompressed_pub:0:2}" != "04" ]]; then
   fail "uncompressed public key invalid"
 fi
 
+comp_helper="$(bip32_pub_compressed_from_priv_hex "${final_k}")"
+if [[ "${comp_helper}" != "${comp_pub}" ]]; then
+  fail "compressed pub helper mismatch"
+fi
+
 if [[ ! "${final_c}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
   fail "derived chain code malformed"
+fi
+
+if bip32_validate_private_scalar "0000000000000000000000000000000000000000000000000000000000000000" "zero" 2>/dev/null; then
+  fail "zero scalar erroneously accepted"
 fi
 
 pass "bip32 library helpers"

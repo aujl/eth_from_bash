@@ -10,7 +10,7 @@ source "${TESTS_DIR}/load_secrets.sh"
 FIXTURE_JSON="${ROOT_DIR}/tests/fixtures/secp256k1_vectors.json"
 FIXTURE_PUB="${ROOT_DIR}/tests/fixtures/secp256k1_vectors_pub.pem"
 SECP_HELPER="${ROOT_DIR}/scripts/secp256k1_pub.sh"
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN="${ROOT_DIR}/bin/crypto-sign"
 
 verify_signature() {
   local sig_file="${SECP256K1_VECTOR_SIG_B64_FILE-}"

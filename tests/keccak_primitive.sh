@@ -11,7 +11,7 @@ KECCAK_SCRIPT="${ROOT_DIR}/scripts/keccak256.sh"
 EIP55_SCRIPT="${ROOT_DIR}/scripts/eip55_checksum.sh"
 VECTORS_FILE="${ROOT_DIR}/tests/fixtures/keccak_vectors.json"
 REFERENCE_PUB="${ROOT_DIR}/tests/fixtures/keccak_reference_pub.pem"
-CRYPTO_SIGN_RSA="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_RSA="${ROOT_DIR}/bin/crypto-sign"
 
 run_rsa_verify() {
   set +e
