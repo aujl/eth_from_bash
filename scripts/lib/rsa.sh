@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2154  # DER_* globals are populated by ASN.1 readers
 
 usage_rsa_sign() {
   cat <<'USAGE'
@@ -40,9 +41,14 @@ RSA_OID="1.2.840.113549.1.1.1"
 SHA256_OID="2.16.840.1.101.3.4.2.1"
 
 parse_rsa_algorithm_identifier() {
-  local hex="$1"
-  der_read_sequence "${hex}" 0
-  local seq_hex="${DER_SEQUENCE_HEX}"
+  local hex="${1,,}"
+  local seq_hex
+  if [[ "${hex:0:2}" == "30" ]]; then
+    der_read_sequence "${hex}" 0
+    seq_hex="${DER_SEQUENCE_HEX}"
+  else
+    seq_hex="${hex}"
+  fi
   local offset=0
   der_read_object_identifier "${seq_hex}" "${offset}"
   local oid="${DER_OBJECT_IDENTIFIER}"
@@ -77,19 +83,14 @@ parse_rsa_private_pkcs1() {
   RSA_PRIV_D="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_P="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_Q="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_DP="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_DQ="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_read_integer "${seq_hex}" "${offset}"
-  RSA_PRIV_QI="${DER_INTEGER_HEX}"
   offset="${DER_NEXT_OFFSET}"
   der_expect_eof "${seq_hex}" "${offset}"
 }
@@ -195,14 +196,22 @@ rsa_digest_info_hex() {
 }
 
 rsa_private_to_pkcs1_hex() {
-  local n_hex="$(normalize_hex "$1")"
-  local e_hex="$(normalize_hex "$2")"
-  local d_hex="$(normalize_hex "$3")"
-  local p_hex="$(normalize_hex "$4")"
-  local q_hex="$(normalize_hex "$5")"
-  local dp_hex="$(normalize_hex "$6")"
-  local dq_hex="$(normalize_hex "$7")"
-  local qi_hex="$(normalize_hex "$8")"
+  local n_hex
+  n_hex="$(normalize_hex "$1")"
+  local e_hex
+  e_hex="$(normalize_hex "$2")"
+  local d_hex
+  d_hex="$(normalize_hex "$3")"
+  local p_hex
+  p_hex="$(normalize_hex "$4")"
+  local q_hex
+  q_hex="$(normalize_hex "$5")"
+  local dp_hex
+  dp_hex="$(normalize_hex "$6")"
+  local dq_hex
+  dq_hex="$(normalize_hex "$7")"
+  local qi_hex
+  qi_hex="$(normalize_hex "$8")"
   der_encode_sequence_hex \
     "$(der_encode_integer_hex "00")" \
     "$(der_encode_integer_hex "${n_hex}")" \
@@ -224,8 +233,10 @@ rsa_private_to_pkcs8_hex() {
 }
 
 rsa_public_to_spki_hex() {
-  local n_hex="$(normalize_hex "$1")"
-  local e_hex="$(normalize_hex "$2")"
+  local n_hex
+  n_hex="$(normalize_hex "$1")"
+  local e_hex
+  e_hex="$(normalize_hex "$2")"
   local public_seq
   public_seq="$(der_encode_sequence_hex "$(der_encode_integer_hex "${n_hex}")" "$(der_encode_integer_hex "${e_hex}")")"
   der_encode_sequence_hex \
@@ -735,19 +746,26 @@ cmd_rsa_verify() {
     return 1
   fi
 
-  local n_hex="$(normalize_hex "${RSA_PUB_N}")"
-  local e_hex="$(normalize_hex "${RSA_PUB_E}")"
-  local sig_hex="$(normalize_hex "${signature_hex}")"
-  local sig_dec="$(hex_to_dec "${sig_hex}")"
-  local n_dec="$(hex_to_dec "${n_hex}")"
-  local e_dec="$(hex_to_dec "${e_hex}")"
+  local n_hex
+  n_hex="$(normalize_hex "${RSA_PUB_N}")"
+  local e_hex
+  e_hex="$(normalize_hex "${RSA_PUB_E}")"
+  local sig_hex
+  sig_hex="$(normalize_hex "${signature_hex}")"
+  local sig_dec
+  sig_dec="$(hex_to_dec "${sig_hex}")"
+  local n_dec
+  n_dec="$(hex_to_dec "${n_hex}")"
+  local e_dec
+  e_dec="$(hex_to_dec "${e_hex}")"
   local em_dec
   em_dec="$(modexp_bc "${sig_dec}" "${e_dec}" "${n_dec}")"
   local em_hex
   em_hex="$(dec_to_hex "${em_dec}")"
   em_hex="$(pad_hex_left "${em_hex}" ${#n_hex})"
 
-  if [[ ${#em_hex} < 4 || ${em_hex:0:4} != "0001" ]]; then
+  local em_len=${#em_hex}
+  if (( em_len < 4 )) || [[ ${em_hex:0:4} != "0001" ]]; then
     echo "verification failed" >&2
     return 1
   fi

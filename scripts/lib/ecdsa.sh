@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2154  # DER_* globals are populated by ASN.1 readers
 
 usage_ecdsa_sign() {
   cat <<'USAGE'
@@ -192,7 +193,7 @@ secp_point_mul() {
     scalar_hex="0"
   fi
   local bc_output
-  bc_output="$(bc <<BC
+  bc_output="$(BC_LINE_LENGTH=0 bc <<BC
 scale=0
 ibase=16
 p=${SECP256K1_P_HEX^^}
@@ -247,7 +248,7 @@ secp_point_add() {
     return 0
   fi
   local bc_output
-  bc_output="$(bc <<BC
+  bc_output="$(BC_LINE_LENGTH=0 bc <<BC
 scale=0
 ibase=16
 p=${SECP256K1_P_HEX^^}

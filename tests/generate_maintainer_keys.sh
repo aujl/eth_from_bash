@@ -18,7 +18,7 @@ KECCAK_PUB="${FIXTURES_DIR}/keccak_reference_pub.pem"
 SECP_PRIV="${PRIVATE_KEY_DIR}/secp256k1_vectors_priv.pem"
 SECP_PUB="${FIXTURES_DIR}/secp256k1_vectors_pub.pem"
 
-CRYPTO_SIGN_SH="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_SH="${ROOT_DIR}/bin/crypto-sign"
 CRYPTO_SIGN_RSA="${CRYPTO_SIGN_RSA:-${CRYPTO_SIGN_SH}}"
 CRYPTO_SIGN_ECDSA="${CRYPTO_SIGN_ECDSA:-${CRYPTO_SIGN_SH}}"
 

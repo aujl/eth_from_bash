@@ -2,7 +2,9 @@
 # Common helpers for eth_from_bash tests
 
 ROOT_DIR="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")/..")"
-SCRIPT="${ROOT_DIR}/eth-from-bash.sh"
+# shellcheck disable=SC2034  # referenced by sourced test scripts
+SCRIPT="${ROOT_DIR}/bin/eth-from-bash"
+# shellcheck disable=SC2034  # referenced by sourced test scripts
 WLIST="${ROOT_DIR}/english_bip-39.txt"
 
 pass() {

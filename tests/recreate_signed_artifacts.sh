@@ -13,7 +13,7 @@ PRIVATE_KEY_DIR="${PRIVATE_KEY_DIR:-$HOME/.config/eth_from_bash/maintainer}"
 KECCAK_PRIV="${KECCAK_PRIV:-$PRIVATE_KEY_DIR/keccak_reference_priv.pem}"
 SECP_PRIV="${SECP_PRIV:-$PRIVATE_KEY_DIR/secp256k1_vectors_priv.pem}"
 
-CRYPTO_SIGN_SH="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_SH="${ROOT_DIR}/bin/crypto-sign"
 CRYPTO_SIGN_RSA="${CRYPTO_SIGN_RSA:-${CRYPTO_SIGN_SH}}"
 CRYPTO_SIGN_ECDSA="${CRYPTO_SIGN_ECDSA:-${CRYPTO_SIGN_SH}}"
 CRYPTO_SIGN_RANDOM="${CRYPTO_SIGN_RANDOM:-${CRYPTO_SIGN_SH}}"
@@ -95,6 +95,7 @@ CORE_FLOW_FIXTURE_HMAC_B64="$(
 
 CORE_FLOW_FIXTURE_HMAC_KEY_B64="$(b64 <"${TMP_KEY}")"
 
+KECCAK_VECTOR_SIG_B64_RAW=""
 capture_rsa_output KECCAK_VECTOR_SIG_B64_RAW "Signing keccak vectors fixture" "${CRYPTO_SIGN_RSA}" rsa-sign --key "${KECCAK_PRIV}" --message "${KECCAK_JSON}" --output base64
 KECCAK_VECTOR_SIG_B64="${KECCAK_VECTOR_SIG_B64_RAW//[$'\n\r']/}"
 SECP256K1_VECTOR_SIG_B64="$("${CRYPTO_SIGN_ECDSA}" ecdsa-sign --key "${SECP_PRIV}" --message "${SECP_JSON}" --output base64)"

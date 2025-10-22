@@ -4,6 +4,7 @@ Deterministically derive an Ethereum private key and address from a BIP‑39 mne
 
 This repo includes:
 - `bin/eth-from-bash`: CLI entrypoint that wires argument parsing, helper discovery, and JSON output together.
+- `bin/crypto-sign`: Dispatcher for the signing/entropy helper backed by the modules in `scripts/lib/`.
 - `eth-from-bash.sh`: Compatibility wrapper that forwards to `bin/eth-from-bash` for existing automation.
 - `scripts/lib/bip39.sh`: BIP‑39 entropy helpers (validation, generation, mnemonic assembly, and wordlist guards).
 - `scripts/lib/bip32.sh`: secp256k1 constants, big-number helpers, and BIP‑32 derivation routines used by the CLI and tests.
@@ -18,7 +19,7 @@ This repo includes:
 - Seed derivation via PBKDF2-HMAC-SHA512 (2048 iters) powered by Perl Digest::SHA HMAC primitives.
 - BIP‑32 derivation with guards: skips invalid `IL >= n` or child key = 0.
 - Ethereum address: Keccak‑256 of uncompressed pubkey (no prefix), EIP‑55 checksum.
-- Non-blocking entropy sourced from the Bash helper (`scripts/crypto_sign.sh random-bytes`) with `/dev/urandom` fallback.
+- Non-blocking entropy sourced from the Bash helper (`bin/crypto-sign random-bytes`) with `/dev/urandom` fallback.
 - Quiet mode for scriptable JSON output.
 
 ## Requirements
@@ -33,23 +34,23 @@ sudo apt update && sudo apt install -y jq bc vim-common
 
 - Generate a new mnemonic and derive address (JSON only):
 ```
-bash eth-from-bash.sh -q english_bip-39.txt
+./bin/eth-from-bash -q english_bip-39.txt
 ```
 
 - Use an existing mnemonic (e.g. from MetaMask) and include the seed:
 ```
-bash eth-from-bash.sh -q --include-seed --mnemonic "abandon abandon ... about" english_bip-39.txt [optional passphrase]
+./bin/eth-from-bash -q --include-seed --mnemonic "abandon abandon ... about" english_bip-39.txt [optional passphrase]
 ```
 
 - Only derive keys/seed (skip address if Keccak is unavailable):
 ```
-bash eth-from-bash.sh -q --no-address english_bip-39.txt
+./bin/eth-from-bash -q --no-address english_bip-39.txt
 ```
 
 - Override entropy or mnemonics via environment variables:
 ```
-ENT_HEX=00000000000000000000000000000000 bash eth-from-bash.sh -q english_bip-39.txt
-MNEMONIC="abandon abandon ... about" bash eth-from-bash.sh -q --include-seed english_bip-39.txt TREZOR
+ENT_HEX=00000000000000000000000000000000 ./bin/eth-from-bash -q english_bip-39.txt
+MNEMONIC="abandon abandon ... about" ./bin/eth-from-bash -q --include-seed english_bip-39.txt TREZOR
 ```
   - `ENT_HEX` must be 32 hexadecimal characters (128 bits).
   - `MNEMONIC` must contain valid BIP-39 words (multiples of three). When set, `--mnemonic` is rejected in favor of the environment.
@@ -64,21 +65,25 @@ Output JSON fields:
 Helper environment variables exported by `eth-from-bash.sh` (available to tests and downstream scripts):
 - `BIP39_HELPER`: Bash wrapper around PBKDF2 seed derivation.
 - `CRYPTO_KDF_HELPER`: Bash CLI for PBKDF2 and HMAC primitives.
-- `CRYPTO_SIGN_HELPER`: Shell signing utility with entropy helpers (e.g., `random-bytes`).
+- `CRYPTO_SIGN_HELPER`: Shell signing utility with entropy helpers (e.g., `bin/crypto-sign random-bytes`).
 - `SECP256K1_HELPER`, `KECCAK_HELPER`, `EIP55_HELPER`: Existing secp256k1, Keccak-256, and EIP-55 utilities.
 
 ### Library layout
 
 `bin/eth-from-bash` sources the reusable helpers under `scripts/lib/` and exports their public shell functions so tests or
-downstream scripts can source the same modules:
+downstream scripts can source the same modules. The sibling dispatcher `bin/crypto-sign` wires the RSA, ECDSA, and HMAC commands
+to the same shared libraries so callers can choose between a CLI or `source`-based workflow:
 
 - `bip39_hex_to_bits`, `bip39_validate_entropy_hex`, `bip39_generate_entropy_hex`, `bip39_build_mnemonic_from_entropy`, and
   related helpers live in `scripts/lib/bip39.sh`.
 - `bip32_master_from_seed`, `bip32_derive_path_segments`, the `bip32_bn_*` arithmetic helpers, and secp256k1 public key
   utilities live in `scripts/lib/bip32.sh`.
+- The crypto-sign helpers live in `scripts/lib/asn1.sh`, `scripts/lib/hmac.sh`, `scripts/lib/rsa.sh`, and
+  `scripts/lib/ecdsa.sh`; tests can source these modules directly without invoking the CLI dispatcher.
 
 All helpers are standard Bash functions that can be consumed by tests via `source scripts/lib/bip39.sh` or
-`source scripts/lib/bip32.sh`; the CLI exports them with `export -f` to preserve compatibility for subprocesses.
+`source scripts/lib/bip32.sh`; the CLI exports them with `export -f` to preserve compatibility for subprocesses and the
+crypto-sign dispatcher keeps the low-level primitives available for sourcing when needed.
 
 ## Tests
 
@@ -135,11 +140,11 @@ make deps
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via OpenSSL tooling.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
-- `scripts/rsa_prime_churn.sh`: Profile `crypto_sign.sh rsa-generate` to inspect bc usage.
+- `scripts/rsa_prime_churn.sh`: Profile `bin/crypto-sign rsa-generate` to inspect bc usage.
 
 ### RSA helper tuning
 
-`scripts/crypto_sign.sh rsa-generate` accepts `--bits` (default `2048`) and
+`bin/crypto-sign rsa-generate` accepts `--bits` (default `2048`) and
 `--exponent` (`65537`) to control key size and public exponent selection. The
 helper enforces odd exponents ≥ 3 and regenerates primes until the Euler
 totient is coprime to the chosen exponent. Prime candidates are sieved against

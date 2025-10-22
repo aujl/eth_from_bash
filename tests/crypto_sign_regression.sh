@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/common.sh
 source "${TESTS_DIR}/common.sh"
 
-CRYPTO_SIGN="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN="${ROOT_DIR}/bin/crypto-sign"
 FIXTURE_DIR="${ROOT_DIR}/tests/fixtures/crypto_sign"
 MESSAGE_FILE="${FIXTURE_DIR}/message.txt"
 

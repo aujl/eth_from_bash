@@ -8,7 +8,7 @@ source "${TESTS_DIR}/common.sh"
 source "${TESTS_DIR}/load_secrets.sh"
 
 CORE_FIXTURE="${ROOT_DIR}/tests/fixtures/core_flow_vectors.json"
-CRYPTO_SIGN_HMAC="${ROOT_DIR}/scripts/crypto_sign.sh"
+CRYPTO_SIGN_HMAC="${ROOT_DIR}/bin/crypto-sign"
 
 load_fixture_values() {
   if [[ ! -f "${CORE_FIXTURE}" ]]; then
@@ -96,8 +96,8 @@ run_crypto_sign_hmac_vectors() {
   key_file="$(mktemp)"
   message_file="$(mktemp)"
   raw_file="$(mktemp)"
-  printf 'key' >"${key_file}"
-  printf 'The quick brown fox jumps over the lazy dog' >"${message_file}"
+  printf 'key' >|"${key_file}"
+  printf 'The quick brown fox jumps over the lazy dog' >|"${message_file}"
 
   hex_output="$(${CRYPTO_SIGN_HMAC} hmac-sha256 --key "${key_file}" --message "${message_file}" --output hex | tr -d '\n')"
   if [[ "${hex_output}" != "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8" ]]; then
@@ -113,7 +113,7 @@ run_crypto_sign_hmac_vectors() {
     exit 1
   fi
 
-  ${CRYPTO_SIGN_HMAC} hmac-sha256 --key "${key_file}" --message "${message_file}" --output raw >"${raw_file}"
+  ${CRYPTO_SIGN_HMAC} hmac-sha256 --key "${key_file}" --message "${message_file}" --output raw >|"${raw_file}"
   raw_len=$(wc -c <"${raw_file}")
   if (( raw_len != 32 )); then
     echo "FAIL: crypto_sign hmac-sha256 raw output length" >&2
@@ -136,7 +136,7 @@ run_crypto_sign_random_bytes() {
 
   base64_output="$(${CRYPTO_SIGN_HMAC} random-bytes --count 24 --output base64 | tr -d '\n')"
   tmp_file="$(mktemp)"
-  if ! printf '%s' "${base64_output}" | base64 -d >"${tmp_file}" 2>/dev/null; then
+  if ! printf '%s' "${base64_output}" | base64 -d >|"${tmp_file}" 2>/dev/null; then
     echo "FAIL: crypto_sign random-bytes base64 decode" >&2
     rm -f -- "${tmp_file}"
     exit 1
@@ -149,7 +149,7 @@ run_crypto_sign_random_bytes() {
   fi
 
   tmp_file="$(mktemp)"
-  ${CRYPTO_SIGN_HMAC} random-bytes --count 8 --output raw >"${tmp_file}"
+  ${CRYPTO_SIGN_HMAC} random-bytes --count 8 --output raw >|"${tmp_file}"
   length=$(wc -c <"${tmp_file}")
   rm -f -- "${tmp_file}"
   if (( length != 8 )); then
