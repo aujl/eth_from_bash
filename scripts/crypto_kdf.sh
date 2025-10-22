@@ -26,15 +26,15 @@ validate_hex() {
   trimmed=${value//$'\t\r\n '/}
   if [[ -z ${trimmed} ]]; then
     error "${label} must be non-empty hex"
-    exit 2
+    return 2
   fi
   if (( ${#trimmed} % 2 != 0 )); then
     error "${label} must have an even number of characters"
-    exit 2
+    return 2
   fi
   if [[ ! ${trimmed} =~ ^[0-9A-Fa-f]+$ ]]; then
     error "${label} must be hexadecimal"
-    exit 2
+    return 2
   fi
   printf '%s' "${trimmed,,}"
 }
@@ -48,25 +48,126 @@ ascii_to_hex() {
   printf '%s' "${input}" | xxd -p -c 256 | tr -d '\n'
 }
 
+hex_to_raw() {
+  local hex=${1:-}
+  if [[ -z ${hex} ]]; then
+    return 0
+  fi
+  local formatted=""
+  local i=0
+  while (( i < ${#hex} )); do
+    formatted+="\\x${hex:i:2}"
+    i=$((i + 2))
+  done
+  printf '%b' "${formatted}"
+}
+
+sha256_hex_from_stream() {
+  sha256sum | awk '{print $1}'
+}
+
+sha512_hex_from_stream() {
+  sha512sum | awk '{print $1}'
+}
+
+pad_hex_to_block() {
+  local hex=${1:-}
+  local block_bytes=$2
+  local target_length=$((block_bytes * 2))
+  while (( ${#hex} < target_length )); do
+    hex+="00"
+  done
+  printf '%s' "${hex:0:target_length}"
+}
+
+xor_hex_with_byte() {
+  local hex=${1:-}
+  local byte=${2:-00}
+  local result=""
+  local i=0
+  local chunk value
+  while (( i < ${#hex} )); do
+    chunk=${hex:i:2}
+    if [[ ${#chunk} -ne 2 ]]; then
+      chunk+="0"
+    fi
+    value=$((16#${chunk} ^ 16#${byte}))
+    result+=$(printf '%02x' "${value}")
+    i=$((i + 2))
+  done
+  printf '%s' "${result}"
+}
+
+xor_hex_strings() {
+  local left=$1
+  local right=$2
+  local result=""
+  local i=0
+  local a b value
+  local max_len=${#left}
+  while (( i < max_len )); do
+    a=${left:i:2}
+    b=${right:i:2}
+    value=$((16#${a} ^ 16#${b}))
+    result+=$(printf '%02x' "${value}")
+    i=$((i + 2))
+  done
+  printf '%s' "${result}"
+}
+
+be32_hex() {
+  local value=$1
+  printf '%08x' "${value}"
+}
+
 hmac_hex() {
   local algo=$1
   local key_hex=$2
   local data_hex=$3
-  perl - "${algo}" "${key_hex}" "${data_hex}" <<'PERL'
-use strict;
-use warnings;
-use Digest::SHA qw(hmac_sha256_hex hmac_sha512_hex);
-my ($algo, $key_hex, $data_hex) = @ARGV;
-my $key = pack('H*', $key_hex);
-my $data = pack('H*', $data_hex);
-if ($algo eq 'sha512') {
-  print hmac_sha512_hex($data, $key);
-} elsif ($algo eq 'sha256') {
-  print hmac_sha256_hex($data, $key);
-} else {
-  die "unsupported hmac algo: $algo";
-}
-PERL
+  local block_size
+  local hash_func
+  case ${algo} in
+    sha256)
+      block_size=64
+      hash_func=sha256_hex_from_stream
+      ;;
+    sha512)
+      block_size=128
+      hash_func=sha512_hex_from_stream
+      ;;
+    *)
+      error "unsupported hmac algo: ${algo}"
+      return 2
+      ;;
+  esac
+
+  key_hex=${key_hex,,}
+  data_hex=${data_hex,,}
+
+  local key_len_bytes=$(( ${#key_hex} / 2 ))
+  if (( key_len_bytes > block_size )); then
+    key_hex="$(hex_to_raw "${key_hex}" | "${hash_func}")"
+    key_len_bytes=$(( ${#key_hex} / 2 ))
+  fi
+
+  local block_hex
+  block_hex="$(pad_hex_to_block "${key_hex}" "${block_size}")"
+
+  local ipad_hex opad_hex
+  ipad_hex="$(xor_hex_with_byte "${block_hex}" "36")"
+  opad_hex="$(xor_hex_with_byte "${block_hex}" "5c")"
+
+  local inner_digest outer_digest
+  inner_digest="$({
+    hex_to_raw "${ipad_hex}"
+    hex_to_raw "${data_hex}"
+  } | "${hash_func}")"
+  outer_digest="$({
+    hex_to_raw "${opad_hex}"
+    hex_to_raw "${inner_digest}"
+  } | "${hash_func}")"
+
+  printf '%s' "${outer_digest}"
 }
 
 pbkdf2_hmac_sha512() {
@@ -74,30 +175,30 @@ pbkdf2_hmac_sha512() {
   local salt_hex=$2
   local iterations=$3
   local dk_len_bytes=64
-  perl - "${password_hex}" "${salt_hex}" "${iterations}" "${dk_len_bytes}" <<'PERL'
-use strict;
-use warnings;
-use Digest::SHA qw(hmac_sha512);
-my ($password_hex, $salt_hex, $iterations, $dk_len_bytes) = @ARGV;
-my $password = pack('H*', $password_hex);
-my $salt = pack('H*', $salt_hex);
-my $iters = int($iterations);
-die "iterations must be positive" if $iters <= 0;
-my $dk_len = int($dk_len_bytes);
-my $hlen = 64;
-my $block_count = int(($dk_len + $hlen - 1) / $hlen);
-my $derived = '';
-for my $block (1 .. $block_count) {
-  my $u = hmac_sha512($salt . pack('N', $block), $password);
-  my $t = $u;
-  for (my $i = 2; $i <= $iters; $i++) {
-    $u = hmac_sha512($u, $password);
-    $t ^= $u;
-  }
-  $derived .= $t;
-}
-print unpack('H*', substr($derived, 0, $dk_len));
-PERL
+  if (( iterations <= 0 )); then
+    error "iterations must be positive"
+    return 2
+  fi
+  local hlen=64
+  local block_count=$(( (dk_len_bytes + hlen - 1) / hlen ))
+  local derived=""
+  local block=1
+  while (( block <= block_count )); do
+    local block_hex
+    block_hex="$(be32_hex "${block}")"
+    local u
+    u="$(hmac_hex sha512 "${password_hex}" "${salt_hex}${block_hex}")"
+    local t="${u}"
+    local i=2
+    while (( i <= iterations )); do
+      u="$(hmac_hex sha512 "${password_hex}" "${u}")"
+      t="$(xor_hex_strings "${t}" "${u}")"
+      ((i++))
+    done
+    derived+="${t}"
+    ((block++))
+  done
+  printf '%s' "${derived:0:$((dk_len_bytes * 2))}"
 }
 
 command_hmac_sha512() {
@@ -111,7 +212,7 @@ command_hmac_sha512() {
           error "--key-hex requires a value"
           exit 2
         fi
-        key_hex=$(validate_hex "key" "$1")
+        key_hex=$(validate_hex "key" "$1") || exit 2
         shift
         ;;
       --data-hex)
@@ -120,7 +221,7 @@ command_hmac_sha512() {
           error "--data-hex requires a value"
           exit 2
         fi
-        data_hex=$(validate_hex "data" "$1")
+        data_hex=$(validate_hex "data" "$1") || exit 2
         shift
         ;;
       *)
@@ -143,7 +244,7 @@ command_hmac_sha256() {
           error "--key-hex requires a value"
           exit 2
         fi
-        key_hex=$(validate_hex "key" "$1")
+        key_hex=$(validate_hex "key" "$1") || exit 2
         shift
         ;;
       --data-hex)
@@ -152,7 +253,7 @@ command_hmac_sha256() {
           error "--data-hex requires a value"
           exit 2
         fi
-        data_hex=$(validate_hex "data" "$1")
+        data_hex=$(validate_hex "data" "$1") || exit 2
         shift
         ;;
       *)
@@ -253,4 +354,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
