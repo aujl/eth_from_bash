@@ -83,6 +83,33 @@ main() {
   temp_dir="$(mktemp -d)"
   trap 'rm -rf "'"${temp_dir}"'"' EXIT
 
+  local corrupted_rsa_sig_b64="${temp_dir}/corrupted_rsa_sig.b64"
+  cp "${RSA_SIG_B64_FILE}" "${corrupted_rsa_sig_b64}"
+  python3 - "${corrupted_rsa_sig_b64}" <<'PY'
+import base64
+import sys
+
+path = sys.argv[1]
+data = base64.b64decode(open(path, 'rb').read())
+if not data:
+    raise SystemExit('signature fixture empty')
+mutated = bytes([data[0] ^ 0x01]) + data[1:]
+with open(path, 'wb') as fh:
+    fh.write(base64.b64encode(mutated) + b"\n")
+PY
+  local rsa_corrupt_output
+  if run_with_status rsa_corrupt_output "${CRYPTO_SIGN}" rsa-verify --key "${RSA_PUB}" --message "${MESSAGE_FILE}" \
+    --signature <(base64 -d "${corrupted_rsa_sig_b64}")); then
+    echo "FAIL: RSA verification accepted corrupted signature" >&2
+    exit 1
+  fi
+  if [[ "${rsa_corrupt_output}" != *"verification failed"* ]]; then
+    echo "FAIL: RSA verification did not report failure for corrupted signature" >&2
+    printf '%s\n' "${rsa_corrupt_output}" >&2
+    exit 1
+  fi
+  pass "RSA verification rejects corrupted signature"
+
   local fixture_pub_out="${temp_dir}/fixture_pub.pem"
   "${CRYPTO_SIGN}" rsa-public --key "${RSA_PRIV}" --output "${fixture_pub_out}"
   if cmp -s "${fixture_pub_out}" "${RSA_PUB}"; then
@@ -162,6 +189,33 @@ main() {
     echo "FAIL: secp256k1 verification rejected fixture" >&2
     exit 1
   fi
+
+  local corrupted_ecdsa_sig_b64="${temp_dir}/corrupted_ecdsa_sig.b64"
+  cp "${ECDSA_SIG_B64_FILE}" "${corrupted_ecdsa_sig_b64}"
+  python3 - "${corrupted_ecdsa_sig_b64}" <<'PY'
+import base64
+import sys
+
+path = sys.argv[1]
+data = base64.b64decode(open(path, 'rb').read())
+if not data:
+    raise SystemExit('signature fixture empty')
+mutated = data[:-1] + bytes([data[-1] ^ 0x01])
+with open(path, 'wb') as fh:
+    fh.write(base64.b64encode(mutated) + b"\n")
+PY
+  local ecdsa_corrupt_output
+  if run_with_status ecdsa_corrupt_output "${CRYPTO_SIGN}" ecdsa-verify --key "${ECDSA_PUB}" --message "${MESSAGE_FILE}" \
+    --signature <(base64 -d "${corrupted_ecdsa_sig_b64}")); then
+    echo "FAIL: secp256k1 verification accepted corrupted signature" >&2
+    exit 1
+  fi
+  if [[ "${ecdsa_corrupt_output}" != *"verification failed"* ]]; then
+    echo "FAIL: secp256k1 verification did not report failure for corrupted signature" >&2
+    printf '%s\n' "${ecdsa_corrupt_output}" >&2
+    exit 1
+  fi
+  pass "secp256k1 verification rejects corrupted signature"
 
   local derived_pub="${temp_dir}/ecdsa_pub.pem"
   if ! "${CRYPTO_SIGN}" ecdsa-public --key "${ECDSA_PRIV}" --output "${derived_pub}"; then
