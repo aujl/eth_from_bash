@@ -1,6 +1,6 @@
 # Ethereum Keys from Bash
 
-Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using Bash with bundled helpers for Keccak, elliptic curve operations, and Bash PBKDF2/HMAC primitives backed by the Perl Digest::SHA module.
+Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using Bash with bundled helpers for Keccak, elliptic curve operations, and Bash PBKDF2/HMAC primitives implemented by the internal `bin/crypto-sign` dispatcher and `scripts/crypto_kdf.sh`.
 
 This repo includes:
 - `bin/eth-from-bash`: CLI entrypoint that wires argument parsing, helper discovery, and JSON output together.
@@ -8,7 +8,7 @@ This repo includes:
 - `eth-from-bash.sh`: Compatibility wrapper that forwards to `bin/eth-from-bash` for existing automation.
 - `scripts/lib/bip39.sh`: BIP‑39 entropy helpers (validation, generation, mnemonic assembly, and wordlist guards).
 - `scripts/lib/bip32.sh`: secp256k1 constants, big-number helpers, and BIP‑32 derivation routines used by the CLI and tests.
-- `scripts/crypto_kdf.sh`: Shell PBKDF2/HMAC helper backed by the Perl `Digest::SHA` module for the CLI and tests.
+- `scripts/crypto_kdf.sh`: Bash PBKDF2/HMAC helper reused by the CLI, tests, and dependency checks.
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
 - `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
 - `tests/load_secrets.sh`: Helper that materializes signature/HMAC secrets for the test harness.
@@ -16,7 +16,7 @@ This repo includes:
 
 ## Features
 - BIP‑39 mnemonic generation (128‑bit entropy) or import via `--mnemonic`.
-- Seed derivation via PBKDF2-HMAC-SHA512 (2048 iters) powered by Perl Digest::SHA HMAC primitives.
+- Seed derivation via PBKDF2-HMAC-SHA512 (2048 iters) powered by the Bash helpers in `bin/crypto-sign` and `scripts/crypto_kdf.sh`.
 - BIP‑32 derivation with guards: skips invalid `IL >= n` or child key = 0.
 - Ethereum address: Keccak‑256 of uncompressed pubkey (no prefix), EIP‑55 checksum.
 - Non-blocking entropy sourced from the Bash helper (`bin/crypto-sign random-bytes`) with `/dev/urandom` fallback.
@@ -136,7 +136,7 @@ make lint
 make deps
 ```
 
-- `bin/check-deps`: Deterministically self-tests CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`, `openssl`) by replaying fixed math, JSON, hashing, and HMAC checks.
+- `bin/check-deps`: Deterministically self-tests CLI dependencies (`jq`, `bc`, `xxd`, `awk`, `sha256sum`, `sha512sum`) and verifies the bundled `bin/crypto-sign` HMAC helper against known vectors.
 - `scripts/keccak256.sh`: Constant-time Keccak-256 helpers and CLI.
 - `scripts/secp256k1_pub.sh`: Derive secp256k1 public keys via on-repo bc helpers.
 - `scripts/eip55_checksum.sh`: Recompute EIP‑55 checksum for an address.
