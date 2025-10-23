@@ -22,7 +22,7 @@ eth_from_bash::check_result() {
 
 eth_from_bash::check_deps() {
   local missing=0
-  local deps=(jq bc xxd awk sha256sum sha512sum openssl)
+  local deps=(jq bc xxd awk sha256sum sha512sum)
 
   for cmd in "${deps[@]}"; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -58,12 +58,30 @@ eth_from_bash::check_deps() {
     failures=1
   fi
 
+  local crypto_sign_bin
+  if crypto_sign_bin="$(command -v crypto-sign 2>/dev/null)" && [[ -n "${crypto_sign_bin}" ]]; then
+    :
+  else
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    crypto_sign_bin="$(cd "${script_dir}/.." && pwd)/bin/crypto-sign"
+  fi
+
+  local key_file message_file
+  key_file="$(mktemp)"
+  message_file="$(mktemp)"
+  printf 'supersecret' >"${key_file}"
+  printf 'eth-from-bash' >"${message_file}"
+
   set +e
-  actual="$(printf 'verify' | openssl dgst -sha256 -mac HMAC -macopt hexkey:00112233445566778899aabbccddeeff | awk '{print $NF}')"
+  actual="$("${crypto_sign_bin}" hmac-sha256 --key "${key_file}" --message "${message_file}" --output hex)"
   status=$?
   set -e
-  if ! eth_from_bash::check_result "openssl" \
-    "c4138406480be28241a2d976c7eae49d78c9960e16a2b71518ff97b9ae376821" "${status}" "${actual}"; then
+
+  rm -f "${key_file}" "${message_file}"
+
+  if ! eth_from_bash::check_result "crypto-sign hmac-sha256" \
+    "463c16069cd606850e43c4a2c045e4270c46054df1bae28d31803fc5fdabd6a5" "${status}" "${actual}"; then
     failures=1
   fi
 
@@ -104,7 +122,7 @@ eth_from_bash::check_deps() {
     return 1
   fi
 
-  echo "All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, sha256sum/sha512sum known digests, openssl HMAC."
+  echo "All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, sha256sum/sha512sum known digests, crypto-sign HMAC."
   return 0
 }
 

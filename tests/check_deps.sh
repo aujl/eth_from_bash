@@ -12,22 +12,23 @@ fi
 
 output="$(${CHECK_DEPS_BIN})" || fail "expected dependency checker to succeed"
 
-expected_phrase="deterministic self-tests"
+expected_phrase="All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, sha256sum/sha512sum known digests, crypto-sign HMAC."
 if [[ "${output}" != *"${expected_phrase}"* ]]; then
   fail "checker output missing phrase '${expected_phrase}'"
 fi
 
-shim_dir="$(mktemp -d)"
-trap 'rm -rf "${shim_dir}"' EXIT
+crypto_shim_dir=""
+sha_shim_dir="$(mktemp -d)"
+trap 'rm -rf "${sha_shim_dir}" "${crypto_shim_dir}"' EXIT
 
-cat <<'SHIM' > "${shim_dir}/sha256sum"
+cat <<'SHIM' > "${sha_shim_dir}/sha256sum"
 #!/usr/bin/env bash
 echo "deadbeef"
 SHIM
-chmod +x "${shim_dir}/sha256sum"
+chmod +x "${sha_shim_dir}/sha256sum"
 
 set +e
-tampered_output="$(PATH="${shim_dir}:${PATH}" "${CHECK_DEPS_BIN}" 2>&1)"
+tampered_output="$(PATH="${sha_shim_dir}:${PATH}" "${CHECK_DEPS_BIN}" 2>&1)"
 tampered_status=$?
 set -e
 
@@ -37,6 +38,32 @@ fi
 
 if [[ "${tampered_output}" != *"Dependency self-test failed for sha256sum"* ]]; then
   fail "tampered output did not mention sha256sum failure"
+fi
+
+crypto_shim_dir="$(mktemp -d)"
+
+cat <<'SHIM' > "${crypto_shim_dir}/crypto-sign"
+#!/usr/bin/env bash
+if [[ "$1" == "hmac-sha256" ]]; then
+  printf 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n'
+  exit 0
+fi
+echo "unexpected invocation" >&2
+exit 1
+SHIM
+chmod +x "${crypto_shim_dir}/crypto-sign"
+
+set +e
+crypto_tampered_output="$(PATH="${crypto_shim_dir}:${PATH}" "${CHECK_DEPS_BIN}" 2>&1)"
+crypto_tampered_status=$?
+set -e
+
+if [[ ${crypto_tampered_status} -eq 0 ]]; then
+  fail "tampered crypto-sign should cause failure"
+fi
+
+if [[ "${crypto_tampered_output}" != *"Dependency self-test failed for crypto-sign hmac-sha256"* ]]; then
+  fail "tampered output did not mention crypto-sign failure"
 fi
 
 pass "dependency checker self-tests"
