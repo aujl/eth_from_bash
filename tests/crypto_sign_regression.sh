@@ -99,7 +99,8 @@ with open(path, 'wb') as fh:
 PY
   local rsa_corrupt_output
   if run_with_status rsa_corrupt_output "${CRYPTO_SIGN}" rsa-verify --key "${RSA_PUB}" --message "${MESSAGE_FILE}" \
-    --signature <(base64 -d "${corrupted_rsa_sig_b64}")); then
+    --signature <(base64 -d "${corrupted_rsa_sig_b64}")
+  then
     echo "FAIL: RSA verification accepted corrupted signature" >&2
     exit 1
   fi
@@ -206,7 +207,8 @@ with open(path, 'wb') as fh:
 PY
   local ecdsa_corrupt_output
   if run_with_status ecdsa_corrupt_output "${CRYPTO_SIGN}" ecdsa-verify --key "${ECDSA_PUB}" --message "${MESSAGE_FILE}" \
-    --signature <(base64 -d "${corrupted_ecdsa_sig_b64}")); then
+    --signature <(base64 -d "${corrupted_ecdsa_sig_b64}")
+  then
     echo "FAIL: secp256k1 verification accepted corrupted signature" >&2
     exit 1
   fi
