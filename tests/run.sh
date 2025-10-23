@@ -6,6 +6,7 @@ TEST_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${TEST_DIR}/load_secrets.sh"
 
 SCRIPTS=(
+  check_deps.sh
   load_secrets_mode.sh
   bip39_lib.sh
   bip32_lib.sh
