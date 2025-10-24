@@ -124,7 +124,7 @@ sha2__rotr64() {
     SHA2_TMP_LO=$((lo & SHA2_MASK32))
     return
   fi
-  local tmp_hi tmp_lo rot_hi rot_lo left_hi left_lo right_hi right_lo
+  local tmp_hi tmp_lo left_hi left_lo right_hi right_lo
   if ((shift >= 32)); then
     tmp_hi=$lo
     tmp_lo=$hi
@@ -465,7 +465,7 @@ sha2__compress512() {
 }
 
 sha2__finalize256() {
-  local -n state_ref=$1
+  local state_name=$1
   local remainder_hex=$2
   local total_hi=$3
   local total_lo=$4
@@ -481,14 +481,14 @@ sha2__finalize256() {
   local block_hex
   while (( offset < ${#remainder_hex} )); do
     block_hex=${remainder_hex:offset:128}
-    sha2__compress256 state_ref "${block_hex}"
+    sha2__compress256 "$state_name" "${block_hex}"
     offset=$((offset + 128))
   done
 }
 
 sha2__finalize512() {
-  local -n state_hi_ref=$1
-  local -n state_lo_ref=$2
+  local state_hi_name=$1
+  local state_lo_name=$2
   local remainder_hex=$3
   local len_hi_hi=$4
   local len_hi_lo=$5
@@ -506,7 +506,7 @@ sha2__finalize512() {
   local block_hex
   while (( offset < ${#remainder_hex} )); do
     block_hex=${remainder_hex:offset:256}
-    sha2__compress512 state_hi_ref state_lo_ref "${block_hex}"
+    sha2__compress512 "$state_hi_name" "$state_lo_name" "${block_hex}"
     offset=$((offset + 256))
   done
 }
