@@ -1,6 +1,12 @@
 # shellcheck shell=bash
 # BIP-39 helper primitives shared across the CLI and tests.
 
+BIP39_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! declare -F sha256_hex_from_stream >/dev/null 2>&1; then
+  # shellcheck source=scripts/lib/sha2.sh
+  source "${BIP39_LIB_DIR}/sha2.sh"
+fi
+
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
   echo "scripts/lib/bip39.sh must be sourced, not executed" >&2
   exit 1
@@ -88,7 +94,7 @@ bip39_generate_entropy_hex(){
 bip39_checksum_bits(){
   local entropy_hex="$1"
   local digest
-  digest="$(printf "%s" "${entropy_hex}" | xxd -r -p | sha256sum | awk '{print $1}')"
+  digest="$(printf "%s" "${entropy_hex}" | xxd -r -p | sha256_hex_from_stream)"
   local digest_bits
   digest_bits="$(bip39_hex_to_bits "${digest}")"
   local checksum_bit_len=$(( (${#entropy_hex} * 4) / 32 ))
@@ -205,7 +211,7 @@ bip39_mnemonic_to_words(){
 
 bip39_checksum_nibble_hex(){
   local entropy_hex="$1"
-  printf "%s" "${entropy_hex}" | xxd -r -p | sha256sum | cut -c1
+  printf "%s" "${entropy_hex}" | xxd -r -p | sha256_hex_from_stream | cut -c1
 }
 
 export -f bip39_hex_to_bits

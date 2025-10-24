@@ -2,6 +2,11 @@
 set -euo pipefail
 set -o noclobber
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/lib"
+# shellcheck source=scripts/lib/sha2.sh
+source "${LIB_DIR}/sha2.sh"
+
 declare -gA HEX_TO_DEC_CACHE=()
 declare -gA DEC_TO_HEX_CACHE=()
 
@@ -150,10 +155,6 @@ hex_to_raw() {
   local formatted
   formatted="$(printf '%s' "${hex}" | sed 's/../\\x&/g')"
   printf '%b' "${formatted}"
-}
-
-sha256_hex_from_stream() {
-  sha256sum | cut -d' ' -f1
 }
 
 normalize_hex() {
@@ -461,9 +462,6 @@ EOF
   result="$(bc_clean_output "${result}")"
   printf '%s\n' "${result}"
 }
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="${SCRIPT_DIR}/lib"
 
 source "${LIB_DIR}/asn1.sh"
 source "${LIB_DIR}/hmac.sh"

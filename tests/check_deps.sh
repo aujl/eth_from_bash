@@ -10,34 +10,54 @@ if [[ ! -x "${CHECK_DEPS_BIN}" ]]; then
   fail "dependency checker missing at ${CHECK_DEPS_BIN}"
 fi
 
+sha2_lib="${ROOT_DIR}/scripts/lib/sha2.sh"
+if [[ ! -r "${sha2_lib}" ]]; then
+  fail "sha2 helper missing at ${sha2_lib}"
+fi
+
+# shellcheck source=scripts/lib/sha2.sh
+source "${sha2_lib}"
+
+if [[ "$(printf 'abc' | sha256_hex_from_stream)" != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" ]]; then
+  fail "sha256 helper failed known vector"
+fi
+
+if [[ "$(printf 'abc' | sha512_hex_from_stream)" != "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f" ]]; then
+  fail "sha512 helper failed known vector"
+fi
+
 output="$(${CHECK_DEPS_BIN})" || fail "expected dependency checker to succeed"
 
-expected_phrase="All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, sha256sum/sha512sum known digests, crypto-sign HMAC."
+expected_phrase="All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, built-in SHA-256/SHA-512 helper digests, crypto-sign HMAC."
 if [[ "${output}" != *"${expected_phrase}"* ]]; then
   fail "checker output missing phrase '${expected_phrase}'"
 fi
 
+sha_override_file="$(mktemp)"
 crypto_shim_dir=""
-sha_shim_dir="$(mktemp -d)"
-trap 'rm -rf "${sha_shim_dir}" "${crypto_shim_dir}"' EXIT
+trap 'rm -f "${sha_override_file}"; rm -rf "${crypto_shim_dir}"' EXIT
 
-cat <<'SHIM' > "${sha_shim_dir}/sha256sum"
-#!/usr/bin/env bash
-echo "deadbeef"
-SHIM
-chmod +x "${sha_shim_dir}/sha256sum"
+cat <<'OVERRIDE' > "${sha_override_file}"
+sha256_hex_from_stream() {
+  printf 'deadbeef\n'
+}
+
+sha512_hex_from_stream() {
+  printf 'deadbeef\n'
+}
+OVERRIDE
 
 set +e
-tampered_output="$(PATH="${sha_shim_dir}:${PATH}" "${CHECK_DEPS_BIN}" 2>&1)"
+tampered_output="$(BASH_ENV="${sha_override_file}" "${CHECK_DEPS_BIN}" 2>&1)"
 tampered_status=$?
 set -e
 
 if [[ ${tampered_status} -eq 0 ]]; then
-  fail "tampered sha256sum should cause failure"
+  fail "tampered sha2 helper should cause failure"
 fi
 
-if [[ "${tampered_output}" != *"Dependency self-test failed for sha256sum"* ]]; then
-  fail "tampered output did not mention sha256sum failure"
+if [[ "${tampered_output}" != *"Dependency self-test failed for sha256 helper"* ]]; then
+  fail "tampered output did not mention sha256 helper failure"
 fi
 
 crypto_shim_dir="$(mktemp -d)"
@@ -54,7 +74,7 @@ SHIM
 chmod +x "${crypto_shim_dir}/crypto-sign"
 
 set +e
-crypto_tampered_output="$(PATH="${crypto_shim_dir}:${PATH}" "${CHECK_DEPS_BIN}" 2>&1)"
+crypto_tampered_output="$(BASH_ENV="${sha_override_file}" PATH="${crypto_shim_dir}:${PATH}" "${CHECK_DEPS_BIN}" 2>&1)"
 crypto_tampered_status=$?
 set -e
 
