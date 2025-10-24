@@ -521,6 +521,7 @@ sha256_hex_from_stream() {
   local remainder_hex=""
   local chunk_hex=""
   while IFS= read -r chunk_hex; do
+    chunk_hex=${chunk_hex//[[:space:]]/}
     if [[ -z ${chunk_hex} ]]; then
       continue
     fi
@@ -532,7 +533,7 @@ sha256_hex_from_stream() {
     else
       remainder_hex+="${chunk_hex}"
     fi
-  done < <(xxd -p -c 64)
+  done < <(od -An -tx1 -v -w64)
 
   sha2__finalize256 state "${remainder_hex}" "${bits_hi}" "${bits_lo}"
   printf '%08x%08x%08x%08x%08x%08x%08x%08x\n' \
@@ -558,6 +559,7 @@ sha512_hex_from_stream() {
   local remainder_hex=""
   local chunk_hex=""
   while IFS= read -r chunk_hex; do
+    chunk_hex=${chunk_hex//[[:space:]]/}
     if [[ -z ${chunk_hex} ]]; then
       continue
     fi
@@ -569,7 +571,7 @@ sha512_hex_from_stream() {
     else
       remainder_hex+="${chunk_hex}"
     fi
-  done < <(xxd -p -c 128)
+  done < <(od -An -tx1 -v -w128)
 
   sha2__finalize512 state_hi state_lo "${remainder_hex}" \
     "${len_hi_hi}" "${len_hi_lo}" "${len_lo_hi}" "${len_lo_lo}"
