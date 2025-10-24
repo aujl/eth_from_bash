@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/sha2.sh
+source "${SCRIPT_DIR}/lib/sha2.sh"
+
 export LC_ALL=C
 
 usage() {
@@ -60,14 +64,6 @@ hex_to_raw() {
     i=$((i + 2))
   done
   printf '%b' "${formatted}"
-}
-
-sha256_hex_from_stream() {
-  sha256sum | awk '{print $1}'
-}
-
-sha512_hex_from_stream() {
-  sha512sum | awk '{print $1}'
 }
 
 pad_hex_to_block() {

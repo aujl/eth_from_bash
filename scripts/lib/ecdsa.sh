@@ -715,7 +715,7 @@ cmd_ecdsa_sign() {
       if [[ "${message_path}" == "-" ]]; then
         digest_hex="$(sha256_hex_from_stream <&0)"
       else
-        digest_hex="$(sha256sum "${message_path}" | cut -d' ' -f1)"
+        digest_hex="$(sha256_hex_from_stream < "${message_path}")"
       fi
       ;;
     *)
@@ -839,7 +839,7 @@ cmd_ecdsa_verify() {
       if [[ "${message_path}" == "-" ]]; then
         digest_hex="$(sha256_hex_from_stream <&0)"
       else
-        digest_hex="$(sha256sum "${message_path}" | cut -d' ' -f1)"
+        digest_hex="$(sha256_hex_from_stream < "${message_path}")"
       fi
       ;;
     *)

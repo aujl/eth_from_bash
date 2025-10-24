@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/sha2.sh
+source "${SCRIPT_DIR}/lib/sha2.sh"
+
 eth_from_bash::check_result() {
   local binary="$1"
   local expected="$2"
@@ -22,7 +26,7 @@ eth_from_bash::check_result() {
 
 eth_from_bash::check_deps() {
   local missing=0
-  local deps=(jq bc xxd awk sha256sum sha512sum)
+  local deps=(jq bc xxd awk)
 
   for cmd in "${deps[@]}"; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -41,19 +45,19 @@ eth_from_bash::check_deps() {
   local actual
 
   set +e
-  actual="$(printf 'eth-from-bash' | sha256sum | awk '{print $1}')"
+  actual="$(printf 'eth-from-bash' | sha256_hex_from_stream)"
   status=$?
   set -e
-  if ! eth_from_bash::check_result "sha256sum" \
+  if ! eth_from_bash::check_result "sha256 helper" \
     "c880132ead8ce984fc8df9a0a84f884aaf04c078c345c07fb6909501d4fdf6ef" "${status}" "${actual}"; then
     failures=1
   fi
 
   set +e
-  actual="$(printf 'eth-from-bash' | sha512sum | awk '{print $1}')"
+  actual="$(printf 'eth-from-bash' | sha512_hex_from_stream)"
   status=$?
   set -e
-  if ! eth_from_bash::check_result "sha512sum" \
+  if ! eth_from_bash::check_result "sha512 helper" \
     "a8806ef666a5967a8b035cb9dcb9b21ebf53fc4988f82e8076f881a9df2bc5ce2dfec68e1683bc22f69eaacb05df3b873ca42901059a5ababf111a6a6eb91021" "${status}" "${actual}"; then
     failures=1
   fi
@@ -122,7 +126,7 @@ eth_from_bash::check_deps() {
     return 1
   fi
 
-  echo "All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, sha256sum/sha512sum known digests, crypto-sign HMAC."
+  echo "All required CLI deps passed deterministic self-tests: jq JSON query, bc division, xxd hex encode, awk arithmetic, built-in SHA-256/SHA-512 helper digests, crypto-sign HMAC."
   return 0
 }
 

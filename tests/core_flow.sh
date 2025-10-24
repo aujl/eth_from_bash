@@ -7,6 +7,13 @@ source "${TESTS_DIR}/common.sh"
 # shellcheck source=tests/load_secrets.sh
 source "${TESTS_DIR}/load_secrets.sh"
 
+SHA2_LIB="${ROOT_DIR}/scripts/lib/sha2.sh"
+if [[ ! -r "${SHA2_LIB}" ]]; then
+  fail "sha2 helper missing at ${SHA2_LIB}"
+fi
+# shellcheck source=scripts/lib/sha2.sh
+source "${SHA2_LIB}"
+
 CORE_FIXTURE="${ROOT_DIR}/tests/fixtures/core_flow_vectors.json"
 CRYPTO_SIGN_HMAC="${ROOT_DIR}/bin/crypto-sign"
 
@@ -226,7 +233,7 @@ run_mnemonic_checksum() {
     i=$((i+8))
   done
   local cs_nib cs_bin
-  cs_nib=$(printf "%s" "${ent_hex}" | xxd -r -p | sha256sum | cut -c1)
+  cs_nib=$(printf "%s" "${ent_hex}" | xxd -r -p | sha256_hex_from_stream | cut -c1)
   cs_bin=$(echo "obase=2; ibase=16; ${cs_nib^^}" | bc)
   cs_bin=$(printf "%04s" "${cs_bin}" | tr ' ' 0)
   if [[ "${cs_bin}" == "${cs_bits}" ]]; then

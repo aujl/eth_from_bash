@@ -625,7 +625,7 @@ cmd_rsa_sign() {
       if [[ "${message_path}" == "-" ]]; then
         digest_hex="$(cat | sha256_hex_from_stream)"
       else
-        digest_hex="$(sha256sum "${message_path}" | cut -d' ' -f1)"
+        digest_hex="$(sha256_hex_from_stream < "${message_path}")"
       fi
       ;;
     *)
@@ -728,7 +728,7 @@ cmd_rsa_verify() {
       if [[ "${message_path}" == "-" ]]; then
         digest_hex="$(sha256_hex_from_stream <&0)"
       else
-        digest_hex="$(sha256sum "${message_path}" | cut -d' ' -f1)"
+        digest_hex="$(sha256_hex_from_stream < "${message_path}")"
       fi
       ;;
     *)

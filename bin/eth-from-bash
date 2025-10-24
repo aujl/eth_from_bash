@@ -8,6 +8,7 @@ export REPO_ROOT
 for lib in \
   "${REPO_ROOT}/scripts/lib/bootstrap.sh" \
   "${REPO_ROOT}/scripts/lib/common.sh" \
+  "${REPO_ROOT}/scripts/lib/sha2.sh" \
   "${REPO_ROOT}/scripts/lib/bip39.sh" \
   "${REPO_ROOT}/scripts/lib/bip32.sh"; do
   [[ -r "${lib}" ]] || continue
@@ -110,7 +111,7 @@ WLIST="${1:?path to english.txt}"
 shift || true
 PASSPHRASE="${*:-}"
 
-for cmd in xxd bc awk sha256sum sha512sum; do
+for cmd in xxd bc awk; do
   command -v "${cmd}" >/dev/null || { echo "need ${cmd}" >&2; exit 1; }
 done
 
