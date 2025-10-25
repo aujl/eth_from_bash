@@ -17,8 +17,10 @@ if ! eth_from_bash::require_commands xxd bc; then
   exit 1
 fi
 
-BIP39_HELPER="${BIP39_HELPER}"  # shellcheck disable=SC2034 keep exported defaults
-CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER}"  # shellcheck disable=SC2034 keep exported defaults
+# shellcheck disable=SC2034  # keep exported defaults
+BIP39_HELPER="${BIP39_HELPER}"
+# shellcheck disable=SC2034  # keep exported defaults
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER}"
 
 ENT_HEX_ENV="${ENT_HEX-}"
 MNEMONIC_ENV="${MNEMONIC-}"

@@ -7,7 +7,8 @@ source "${TESTS_DIR}/common.sh"
 # shellcheck source=tests/load_secrets.sh
 source "${TESTS_DIR}/load_secrets.sh"
 
-# shellcheck disable=SC2034 used by tests
+# shellcheck disable=SC2034
+# used by tests
 SHA2_LIB="${ROOT_DIR}/scripts/lib/crypto/sha2.sh"
 if [[ ! -r "${SHA2_LIB}" ]]; then
   fail "sha2 helper missing at ${SHA2_LIB}"
