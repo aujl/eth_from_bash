@@ -50,7 +50,7 @@ ed25519_clamp_scalar_le_hex() {
     return 1
   fi
   local -a bytes=()
-  local i byte
+  local i
   for (( i=0; i<64; i+=2 )); do
     bytes+=("${scalar_hex:i:2}")
   done
@@ -263,8 +263,9 @@ ed25519_expand_secret_from_seed() {
 
 ed25519_public_key_from_seed_hex() {
   local seed_hex="${1,,}"
-  local scalar prefix
-  read -r scalar prefix < <(ed25519_expand_secret_from_seed "${seed_hex}") || return 1
+  local scalar
+  local _prefix
+  read -r scalar _prefix < <(ed25519_expand_secret_from_seed "${seed_hex}") || return 1
   ed25519_public_from_scalar_hex "${scalar}"
 }
 

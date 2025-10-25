@@ -47,12 +47,15 @@ test_slip10_vectors() {
 }
 
 test_base58_vectors() {
-  local zero_one="$(base58_encode_hex "00")"
+  local zero_one
+  zero_one="$(base58_encode_hex "00")"
   expect_eq "${zero_one}" "1" "Base58 encode 0x00"
-  local two_bytes="$(base58_encode_hex "0001")"
+  local two_bytes
+  two_bytes="$(base58_encode_hex "0001")"
   expect_eq "${two_bytes}" "12" "Base58 encode 0x0001"
   local pub_hex="c047b4f3846cb97c5a956c84ad16a7922bdf7b659c17ff3b366f2d8f4a37f499"
-  local addr="$(base58_encode_hex "${pub_hex}")"
+  local addr
+  addr="$(base58_encode_hex "${pub_hex}")"
   expect_eq "${addr}" "DwahMtMFiaySBMpNgRzDgwwAejoPM7ZgggMEhj3Yr2AL" "Base58 encode known public key"
   pass "Base58 encoding vectors"
 }

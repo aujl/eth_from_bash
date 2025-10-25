@@ -78,9 +78,19 @@ solana_slip10_parse_path() {
   local remainder="${path#m/}"
   local -a result=()
   IFS='/' read -r -a segments <<<"${remainder}"
+  local numeric
   for segment in "${segments[@]}"; do
-    if [[ ! "${segment}" =~ ^[0-9]+'$ ]]; then
+    if [[ -z "${segment}" ]]; then
+      echo "invalid empty path segment" >&2
+      return 1
+    fi
+    if [[ ${segment: -1} != "'" ]]; then
       echo "Solana derivation requires hardened segments (' indexes)" >&2
+      return 1
+    fi
+    numeric="${segment%?}"
+    if [[ -z "${numeric}" || ! "${numeric}" =~ ^[0-9]+$ ]]; then
+      echo "invalid path segment '${segment}'" >&2
       return 1
     fi
     result+=("${segment}")
