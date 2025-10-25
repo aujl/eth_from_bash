@@ -2,7 +2,7 @@
 # BIP-32 (secp256k1) helper primitives for eth-from-bash.
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "scripts/lib/bip32.sh must be sourced, not executed" >&2
+  echo "scripts/lib/bip/bip32.sh must be sourced, not executed" >&2
   exit 1
 fi
 

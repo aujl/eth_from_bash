@@ -7,11 +7,13 @@ source "${TESTS_DIR}/common.sh"
 # shellcheck source=tests/load_secrets.sh
 source "${TESTS_DIR}/load_secrets.sh"
 
-SHA2_LIB="${ROOT_DIR}/scripts/lib/sha2.sh"
+# shellcheck disable=SC2034
+# used by tests
+SHA2_LIB="${ROOT_DIR}/scripts/lib/crypto/sha2.sh"
 if [[ ! -r "${SHA2_LIB}" ]]; then
   fail "sha2 helper missing at ${SHA2_LIB}"
 fi
-# shellcheck source=scripts/lib/sha2.sh
+# shellcheck source=scripts/lib/crypto/sha2.sh
 source "${SHA2_LIB}"
 
 CORE_FIXTURE="${ROOT_DIR}/tests/fixtures/core_flow_vectors.json"

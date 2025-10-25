@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/sha2.sh
-source "${SCRIPT_DIR}/lib/sha2.sh"
+# shellcheck source=scripts/lib/crypto/sha2.sh
+source "${SCRIPT_DIR}/lib/crypto/sha2.sh"
 
 export LC_ALL=C
 

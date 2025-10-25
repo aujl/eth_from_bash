@@ -2,7 +2,7 @@
 # Base58 encoding utilities (Bitcoin alphabet)
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "scripts/lib/base58.sh must be sourced" >&2
+  echo "scripts/lib/encoding/base58.sh must be sourced" >&2
   exit 1
 fi
 

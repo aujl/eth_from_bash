@@ -2,7 +2,7 @@
 # SLIP-0010 helpers for Ed25519 (Solana-specific derivation)
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "scripts/lib/solana_slip10.sh must be sourced" >&2
+  echo "scripts/lib/chains/solana.sh must be sourced" >&2
   exit 1
 fi
 

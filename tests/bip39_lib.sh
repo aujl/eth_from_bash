@@ -5,7 +5,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/common.sh
 source "${TEST_DIR}/common.sh"
 # shellcheck source=/dev/null
-source "${ROOT_DIR}/scripts/lib/bip39.sh"
+source "${ROOT_DIR}/scripts/lib/bip/bip39.sh"
 
 CRYPTO_SIGN_HELPER="${ROOT_DIR}/bin/crypto-sign"
 if [[ ! -x "${CRYPTO_SIGN_HELPER}" ]]; then

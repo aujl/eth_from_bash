@@ -2,7 +2,7 @@
 # Ed25519 scalar and point utilities implemented via bc
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "scripts/lib/ed25519.sh must be sourced" >&2
+  echo "scripts/lib/crypto/ed25519.sh must be sourced" >&2
   exit 1
 fi
 

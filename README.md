@@ -3,15 +3,20 @@
 Deterministically derive an Ethereum private key and address from a BIP‑39 mnemonic using Bash with bundled helpers for Keccak, elliptic curve operations, and Bash PBKDF2/HMAC primitives implemented by the internal `bin/crypto-sign` dispatcher and `scripts/crypto_kdf.sh`.
 
 This repo includes:
-- `bin/eth-from-bash`: CLI entrypoint that wires argument parsing, helper discovery, and JSON output together.
+- `bin/eth-from-bash`: Thin CLI wrapper that delegates to the composable modules under `scripts/`.
 - `bin/sol-from-bash`: Solana-focused CLI that derives SLIP-0010/Ed25519 key material and base58 addresses.
 - `bin/crypto-sign`: Dispatcher for the signing/entropy helper backed by the modules in `scripts/lib/`.
 - `eth-from-bash.sh`: Compatibility wrapper that forwards to `bin/eth-from-bash` for existing automation.
-- `scripts/lib/bip39.sh`: BIP‑39 entropy helpers (validation, generation, mnemonic assembly, and wordlist guards).
-- `scripts/lib/bip32.sh`: secp256k1 constants, big-number helpers, and BIP‑32 derivation routines used by the CLI and tests.
-- `scripts/lib/solana_slip10.sh`: SLIP‑0010 hardened derivation helpers for Ed25519 chains (used by the Solana CLI/tests).
-- `scripts/lib/ed25519.sh`: Pure Bash Ed25519 scalar/point helpers backed by `bc` for public key derivation.
-- `scripts/lib/base58.sh`: Bitcoin-alphabet base58 encoder used for Solana address formatting.
+- `scripts/cli/ethereum.sh`: CLI argument parsing and validation for the Ethereum flow.
+- `scripts/lib/common/bootstrap.sh`: Shared environment/bootstrap helpers that source the reusable modules and export helper
+  binaries.
+- `scripts/lib/flows/ethereum.sh`: Orchestrates mnemonic normalization, BIP-32 derivation, and address assembly for the
+  Ethereum CLI.
+- `scripts/lib/bip/`: BIP‑specific helpers (`bip39.sh`, `bip32.sh`) for entropy, mnemonics, and secp256k1 derivation.
+- `scripts/lib/crypto/`: Shared cryptographic primitives (SHA-2, HMAC, ASN.1, RSA, ECDSA, Ed25519) consumed by the CLI and
+  `bin/crypto-sign`.
+- `scripts/lib/chains/solana.sh`: SLIP‑0010 hardened derivation helpers for Solana's Ed25519 flow.
+- `scripts/lib/encoding/base58.sh`: Bitcoin-alphabet base58 encoder used for Solana address formatting.
 - `scripts/crypto_kdf.sh`: Bash PBKDF2/HMAC helper reused by the CLI, tests, and dependency checks.
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
 - `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
@@ -104,22 +109,22 @@ Helper environment variables exported by `eth-from-bash.sh` (available to tests 
 
 ### Library layout
 
-`bin/eth-from-bash` sources the reusable helpers under `scripts/lib/` and exports their public shell functions so tests or
-downstream scripts can source the same modules. The sibling dispatcher `bin/crypto-sign` wires the RSA, ECDSA, and HMAC commands
-to the same shared libraries so callers can choose between a CLI or `source`-based workflow:
+`bin/eth-from-bash` now wires together `scripts/lib/common/bootstrap.sh`, `scripts/cli/ethereum.sh`, and
+`scripts/lib/flows/ethereum.sh`, keeping dispatch light while exposing the reusable functions to tests and downstream
+automation. The sibling dispatcher `bin/crypto-sign` continues to rely on the same shared primitives so callers can choose
+between invoking a CLI or sourcing a module directly:
 
-- `bip39_hex_to_bits`, `bip39_validate_entropy_hex`, `bip39_generate_entropy_hex`, `bip39_build_mnemonic_from_entropy`, and
-  related helpers live in `scripts/lib/bip39.sh`.
-- `bip32_master_from_seed`, `bip32_derive_path_segments`, the `bip32_bn_*` arithmetic helpers, and secp256k1 public key
-  utilities live in `scripts/lib/bip32.sh`.
-- The Solana flow is powered by `scripts/lib/solana_slip10.sh`, `scripts/lib/ed25519.sh`, and `scripts/lib/base58.sh`, which can be
-  sourced in isolation for advanced automation.
-- The crypto-sign helpers live in `scripts/lib/asn1.sh`, `scripts/lib/hmac.sh`, `scripts/lib/rsa.sh`, and
-  `scripts/lib/ecdsa.sh`; tests can source these modules directly without invoking the CLI dispatcher.
+- BIP‑39/BIP‑32 helpers (`bip39_hex_to_bits`, `bip39_validate_entropy_hex`, `bip39_build_mnemonic_from_entropy`,
+  `bip32_master_from_seed`, `bip32_derive_path_segments`, etc.) live under `scripts/lib/bip/`.
+- Cryptographic primitives (SHA-2 digests, HMAC, ASN.1, RSA, ECDSA, and Ed25519 helpers) live under `scripts/lib/crypto/`
+  and power both the CLI flows and `bin/crypto-sign`.
+- Solana-specific flows reuse `scripts/lib/chains/solana.sh`, `scripts/lib/crypto/ed25519.sh`, and
+  `scripts/lib/encoding/base58.sh` for SLIP‑0010 derivation and address formatting.
 
-All helpers are standard Bash functions that can be consumed by tests via `source scripts/lib/bip39.sh` or
-`source scripts/lib/bip32.sh`; the CLI exports them with `export -f` to preserve compatibility for subprocesses and the
-crypto-sign dispatcher keeps the low-level primitives available for sourcing when needed.
+All helpers are standard Bash functions that can be consumed by tests via modules such as
+`source scripts/lib/bip/bip39.sh` or `source scripts/lib/bip/bip32.sh`; the CLI exports them with `export -f` to preserve
+compatibility for subprocesses, and the crypto-sign dispatcher keeps the low-level primitives available for sourcing when
+needed.
 
 ## Tests
 

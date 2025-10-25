@@ -17,7 +17,7 @@ export CRYPTO_KDF_HELPER
 export SECP256K1_HELPER
 
 # shellcheck source=/dev/null
-source "${ROOT_DIR}/scripts/lib/bip32.sh"
+source "${ROOT_DIR}/scripts/lib/bip/bip32.sh"
 
 add_result="$(bip32_bn_add_mod_n "0000000000000000000000000000000000000000000000000000000000000001" \
   "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140")"

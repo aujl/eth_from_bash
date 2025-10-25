@@ -2,8 +2,12 @@
 # SHA-2 (SHA-256 and SHA-512) helpers implemented with Bash arithmetic.
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "scripts/lib/sha2.sh must be sourced, not executed" >&2
+  echo "scripts/lib/crypto/sha2.sh must be sourced, not executed" >&2
   exit 1
+fi
+
+if [[ -n "${SHA2_MASK32+x}" ]]; then
+  return 0
 fi
 
 readonly SHA2_MASK32=$((0xFFFFFFFF))
