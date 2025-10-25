@@ -4,10 +4,14 @@ Deterministically derive an Ethereum private key and address from a BIP‑39 mne
 
 This repo includes:
 - `bin/eth-from-bash`: CLI entrypoint that wires argument parsing, helper discovery, and JSON output together.
+- `bin/sol-from-bash`: Solana-focused CLI that derives SLIP-0010/Ed25519 key material and base58 addresses.
 - `bin/crypto-sign`: Dispatcher for the signing/entropy helper backed by the modules in `scripts/lib/`.
 - `eth-from-bash.sh`: Compatibility wrapper that forwards to `bin/eth-from-bash` for existing automation.
 - `scripts/lib/bip39.sh`: BIP‑39 entropy helpers (validation, generation, mnemonic assembly, and wordlist guards).
 - `scripts/lib/bip32.sh`: secp256k1 constants, big-number helpers, and BIP‑32 derivation routines used by the CLI and tests.
+- `scripts/lib/solana_slip10.sh`: SLIP‑0010 hardened derivation helpers for Ed25519 chains (used by the Solana CLI/tests).
+- `scripts/lib/ed25519.sh`: Pure Bash Ed25519 scalar/point helpers backed by `bc` for public key derivation.
+- `scripts/lib/base58.sh`: Bitcoin-alphabet base58 encoder used for Solana address formatting.
 - `scripts/crypto_kdf.sh`: Bash PBKDF2/HMAC helper reused by the CLI, tests, and dependency checks.
 - `english_bip-39.txt`: Standard 2048‑word English BIP‑39 wordlist.
 - `tests/run.sh`: Modular sanity tests for BIP‑39 flow, environment guards, and Keccak vectors.
@@ -18,6 +22,7 @@ This repo includes:
 - BIP‑39 mnemonic generation (128‑bit entropy) or import via `--mnemonic`.
 - Seed derivation via PBKDF2-HMAC-SHA512 (2048 iters) powered by the Bash helpers in `bin/crypto-sign` and `scripts/crypto_kdf.sh`.
 - BIP‑32 derivation with guards: skips invalid `IL >= n` or child key = 0.
+- SLIP‑0010 hardened derivation for Solana Ed25519 accounts (`m/44'/501'/…`).
 - Ethereum address: Keccak‑256 of uncompressed pubkey (no prefix), EIP‑55 checksum.
 - Non-blocking entropy sourced from the Bash helper (`bin/crypto-sign random-bytes`) with `/dev/urandom` fallback.
 - Quiet mode for scriptable JSON output.
@@ -62,6 +67,35 @@ Output JSON fields:
 - `address`: EIP‑55 checksummed `0x…` (empty `0x` if `--no-address`)
 - `seed`: 64‑byte seed hex (only when `--include-seed` is used)
 
+## Solana from Bash
+
+`bin/sol-from-bash` mirrors the Ethereum workflow but targets Solana’s Ed25519-based accounts. It reuses the BIP‑39 helper,
+derives hardened SLIP‑0010 keys, expands them into Ed25519 public keys using the bundled `bc` arithmetic helpers, and exports the
+address in base58 form.
+
+- Derive the first Solana account for a mnemonic and include the seed:
+  ```
+  ./bin/sol-from-bash -q --include-seed --mnemonic "urge pulp usage sister evidence arrest palm math please chief egg abuse" english_bip-39.txt
+  ```
+
+- Override the derivation path (only hardened segments are supported):
+  ```
+  ./bin/sol-from-bash -q --path "m/44'/501'/1'/0'" english_bip-39.txt
+  ```
+
+The Solana CLI JSON mirrors the Ethereum fields where possible and adds Solana-specific artifacts:
+
+- `mnemonic`: Normalized BIP‑39 words
+- `path`: Hardened SLIP‑0010 path (default `m/44'/501'/0'/0'`)
+- `privateKey`: 32‑byte Ed25519 seed (hex)
+- `publicKey`: 32‑byte compressed Ed25519 public key (hex)
+- `secretKey`: 64‑byte secret key (seed concatenated with public key)
+- `chainCode`: SLIP‑0010 chain code (hex)
+- `address`: Base58-encoded public key (Solana address)
+- `seed`: Optional 64‑byte BIP‑39 seed when `--include-seed` is set
+
+The helper respects `MNEMONIC`/`ENT_HEX` overrides just like the Ethereum CLI and requires only `bash`, `bc`, and `xxd`.
+
 Helper environment variables exported by `eth-from-bash.sh` (available to tests and downstream scripts):
 - `BIP39_HELPER`: Bash wrapper around PBKDF2 seed derivation.
 - `CRYPTO_KDF_HELPER`: Bash CLI for PBKDF2 and HMAC primitives.
@@ -78,6 +112,8 @@ to the same shared libraries so callers can choose between a CLI or `source`-bas
   related helpers live in `scripts/lib/bip39.sh`.
 - `bip32_master_from_seed`, `bip32_derive_path_segments`, the `bip32_bn_*` arithmetic helpers, and secp256k1 public key
   utilities live in `scripts/lib/bip32.sh`.
+- The Solana flow is powered by `scripts/lib/solana_slip10.sh`, `scripts/lib/ed25519.sh`, and `scripts/lib/base58.sh`, which can be
+  sourced in isolation for advanced automation.
 - The crypto-sign helpers live in `scripts/lib/asn1.sh`, `scripts/lib/hmac.sh`, `scripts/lib/rsa.sh`, and
   `scripts/lib/ecdsa.sh`; tests can source these modules directly without invoking the CLI dispatcher.
 
@@ -106,6 +142,7 @@ What is covered:
 - Core CLI flow vectors, environment guard rails, and fixture HMAC verification.
 - Deterministic Keccak-256 primitives, vector regeneration, and detached signature verification.
 - secp256k1 primitive self-test, vector verification, and detached signature validation.
+- Solana SLIP‑0010/Ed25519 derivation regression tests and base58 formatting vectors.
 
 ## Maintainer signing workflow
 Maintainers can refresh the signing material entirely offline. The workflow produces fresh maintainer keypairs, regenerates the fixture HMAC/signatures, and exports environment assignments that `tests/load_secrets.sh` understands.

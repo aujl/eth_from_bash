@@ -124,6 +124,8 @@ Commands:
   ecdsa-verify   Verify secp256k1 ECDSA signature
   ecdsa-generate Generate secp256k1 keypair (EC private + SPKI public)
   ecdsa-public   Derive secp256k1 public key from private key
+  ed25519-public Derive Ed25519 public key from 32-byte seed
+  ed25519-keypair Produce Ed25519 public key and 64-byte secret key
 
 Run "crypto_sign.sh <command> --help" for command-specific flags.
 USAGE
@@ -467,6 +469,115 @@ source "${LIB_DIR}/asn1.sh"
 source "${LIB_DIR}/hmac.sh"
 source "${LIB_DIR}/rsa.sh"
 source "${LIB_DIR}/ecdsa.sh"
+# shellcheck source=scripts/lib/ed25519.sh
+source "${LIB_DIR}/ed25519.sh"
+
+cmd_ed25519_public() {
+  local seed_hex="" output_format="hex"
+  while (($#)); do
+    case "$1" in
+      --seed-hex)
+        shift
+        seed_hex="${1-}"
+        if [[ -z "${seed_hex}" ]]; then
+          echo "--seed-hex requires a value" >&2
+          return 1
+        fi
+        shift
+        ;;
+      --output)
+        shift
+        output_format="${1-}"
+        if [[ -z "${output_format}" ]]; then
+          echo "--output requires a value" >&2
+          return 1
+        fi
+        shift
+        ;;
+      --help|-h)
+        cat <<'USAGE'
+Usage: crypto_sign.sh ed25519-public --seed-hex HEX [--output hex|raw]
+
+  --seed-hex   32-byte Ed25519 seed in hex form
+  --output     Output format: hex (default) or raw
+USAGE
+        return 0
+        ;;
+      *)
+        echo "Unknown option '$1'" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${seed_hex}" ]]; then
+    echo "ed25519-public requires --seed-hex" >&2
+    return 1
+  fi
+  if [[ ! ${seed_hex} =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    echo "seed must be 32-byte hex" >&2
+    return 1
+  fi
+
+  local pub_hex
+  pub_hex="$(ed25519_public_key_from_seed_hex "${seed_hex}")" || return 1
+
+  case "${output_format}" in
+    hex)
+      printf '%s\n' "${pub_hex}"
+      ;;
+    raw)
+      hex_to_raw "${pub_hex}"
+      ;;
+    *)
+      echo "Unsupported output format '${output_format}'" >&2
+      return 1
+      ;;
+  esac
+}
+
+cmd_ed25519_keypair() {
+  local seed_hex=""
+  while (($#)); do
+    case "$1" in
+      --seed-hex)
+        shift
+        seed_hex="${1-}"
+        if [[ -z "${seed_hex}" ]]; then
+          echo "--seed-hex requires a value" >&2
+          return 1
+        fi
+        shift
+        ;;
+      --help|-h)
+        cat <<'USAGE'
+Usage: crypto_sign.sh ed25519-keypair --seed-hex HEX
+
+  --seed-hex   32-byte Ed25519 seed in hex form
+USAGE
+        return 0
+        ;;
+      *)
+        echo "Unknown option '$1'" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${seed_hex}" ]]; then
+    echo "ed25519-keypair requires --seed-hex" >&2
+    return 1
+  fi
+  if [[ ! ${seed_hex} =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    echo "seed must be 32-byte hex" >&2
+    return 1
+  fi
+
+  local pub_hex secret_hex64
+  pub_hex="$(ed25519_public_key_from_seed_hex "${seed_hex}")" || return 1
+  secret_hex64="$(ed25519_secret_key64_from_seed "${seed_hex}")" || return 1
+  printf '%s %s %s\n' "${seed_hex,,}" "${pub_hex}" "${secret_hex64}"
+}
 
 main() {
   local cmd="${1:-}"
@@ -505,6 +616,12 @@ main() {
       ;;
     ecdsa-verify)
       cmd_ecdsa_verify "$@"
+      ;;
+    ed25519-public)
+      cmd_ed25519_public "$@"
+      ;;
+    ed25519-keypair)
+      cmd_ed25519_keypair "$@"
       ;;
     --help|-h|help)
       usage

@@ -11,6 +11,7 @@ SCRIPTS=(
   bip39_lib.sh
   bip32_lib.sh
   core_flow.sh
+  solana_flow.sh
   crypto_kdf_unit.sh
   crypto_kdf_vectors.sh
   crypto_sign_regression.sh
