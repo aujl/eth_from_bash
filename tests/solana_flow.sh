@@ -12,14 +12,14 @@ if [[ ! -x "${SOL_SCRIPT}" ]]; then
   fail "sol-from-bash entrypoint missing"
 fi
 
-# shellcheck source=scripts/lib/sha2.sh
-source "${ROOT_DIR}/scripts/lib/sha2.sh"
-# shellcheck source=scripts/lib/solana_slip10.sh
-source "${ROOT_DIR}/scripts/lib/solana_slip10.sh"
-# shellcheck source=scripts/lib/ed25519.sh
-source "${ROOT_DIR}/scripts/lib/ed25519.sh"
-# shellcheck source=scripts/lib/base58.sh
-source "${ROOT_DIR}/scripts/lib/base58.sh"
+# shellcheck source=scripts/lib/crypto/sha2.sh
+source "${ROOT_DIR}/scripts/lib/crypto/sha2.sh"
+# shellcheck source=scripts/lib/chains/solana.sh
+source "${ROOT_DIR}/scripts/lib/chains/solana.sh"
+# shellcheck source=scripts/lib/crypto/ed25519.sh
+source "${ROOT_DIR}/scripts/lib/crypto/ed25519.sh"
+# shellcheck source=scripts/lib/encoding/base58.sh
+source "${ROOT_DIR}/scripts/lib/encoding/base58.sh"
 
 expect_eq() {
   local actual="$1" expected="$2" message="$3"

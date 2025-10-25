@@ -4,8 +4,8 @@ set -o noclobber
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
-# shellcheck source=scripts/lib/sha2.sh
-source "${LIB_DIR}/sha2.sh"
+# shellcheck source=scripts/lib/crypto/sha2.sh
+source "${LIB_DIR}/crypto/sha2.sh"
 
 declare -gA HEX_TO_DEC_CACHE=()
 declare -gA DEC_TO_HEX_CACHE=()
@@ -465,12 +465,12 @@ EOF
   printf '%s\n' "${result}"
 }
 
-source "${LIB_DIR}/asn1.sh"
-source "${LIB_DIR}/hmac.sh"
-source "${LIB_DIR}/rsa.sh"
-source "${LIB_DIR}/ecdsa.sh"
-# shellcheck source=scripts/lib/ed25519.sh
-source "${LIB_DIR}/ed25519.sh"
+source "${LIB_DIR}/crypto/asn1.sh"
+source "${LIB_DIR}/crypto/hmac.sh"
+source "${LIB_DIR}/crypto/rsa.sh"
+source "${LIB_DIR}/crypto/ecdsa.sh"
+# shellcheck source=scripts/lib/crypto/ed25519.sh
+source "${LIB_DIR}/crypto/ed25519.sh"
 
 cmd_ed25519_public() {
   local seed_hex="" output_format="hex"

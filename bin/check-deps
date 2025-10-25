@@ -5,11 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export REPO_ROOT
 
-for lib in "${REPO_ROOT}/scripts/lib/bootstrap.sh" "${REPO_ROOT}/scripts/lib/common.sh"; do
-  [[ -r "${lib}" ]] || continue
-  # shellcheck source=/dev/null
-  source "${lib}"
-done
+# shellcheck source=scripts/lib/common/bootstrap.sh
+source "${REPO_ROOT}/scripts/lib/common/bootstrap.sh"
+eth_from_bash::bootstrap_cli_environment "${REPO_ROOT}"
 
 check_deps_script="${REPO_ROOT}/scripts/check_deps.sh"
 if [[ ! -r "${check_deps_script}" ]]; then

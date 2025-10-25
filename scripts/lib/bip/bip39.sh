@@ -3,12 +3,12 @@
 
 BIP39_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! declare -F sha256_hex_from_stream >/dev/null 2>&1; then
-  # shellcheck source=scripts/lib/sha2.sh
-  source "${BIP39_LIB_DIR}/sha2.sh"
+  # shellcheck source=scripts/lib/crypto/sha2.sh
+  source "${BIP39_LIB_DIR}/../crypto/sha2.sh"
 fi
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "scripts/lib/bip39.sh must be sourced, not executed" >&2
+  echo "scripts/lib/bip/bip39.sh must be sourced, not executed" >&2
   exit 1
 fi
 

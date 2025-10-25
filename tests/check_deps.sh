@@ -10,12 +10,12 @@ if [[ ! -x "${CHECK_DEPS_BIN}" ]]; then
   fail "dependency checker missing at ${CHECK_DEPS_BIN}"
 fi
 
-sha2_lib="${ROOT_DIR}/scripts/lib/sha2.sh"
+sha2_lib="${ROOT_DIR}/scripts/lib/crypto/sha2.sh"
 if [[ ! -r "${sha2_lib}" ]]; then
   fail "sha2 helper missing at ${sha2_lib}"
 fi
 
-# shellcheck source=scripts/lib/sha2.sh
+# shellcheck source=scripts/lib/crypto/sha2.sh
 source "${sha2_lib}"
 
 if [[ "$(printf 'abc' | sha256_hex_from_stream)" != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" ]]; then
