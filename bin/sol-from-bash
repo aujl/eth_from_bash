@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export REPO_ROOT
+
+for lib in \
+  "${REPO_ROOT}/scripts/lib/bootstrap.sh" \
+  "${REPO_ROOT}/scripts/lib/common.sh" \
+  "${REPO_ROOT}/scripts/lib/sha2.sh" \
+  "${REPO_ROOT}/scripts/lib/bip39.sh" \
+  "${REPO_ROOT}/scripts/lib/solana_slip10.sh" \
+  "${REPO_ROOT}/scripts/lib/ed25519.sh" \
+  "${REPO_ROOT}/scripts/lib/base58.sh"; do
+  [[ -r "${lib}" ]] || continue
+  # shellcheck source=/dev/null
+  source "${lib}"
+done
+
+BIP39_HELPER="${BIP39_HELPER:-${REPO_ROOT}/scripts/bip39_seed.sh}"
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${REPO_ROOT}/scripts/crypto_kdf.sh}"
+
+ensure_exec() {
+  local path="$1" label="$2"
+  if [[ ! -x "${path}" ]]; then
+    echo "${label} '${path}' not executable" >&2
+    exit 1
+  fi
+}
+
+ensure_exec "${BIP39_HELPER}" "Seed helper"
+ensure_exec "${CRYPTO_KDF_HELPER}" "Crypto helper"
+
+for cmd in xxd bc; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Required tool '${cmd}' missing" >&2
+    exit 1
+  fi
+done
+
+ENT_HEX_ENV="${ENT_HEX-}"
+MNEMONIC_ENV="${MNEMONIC-}"
+
+QUIET=0
+INCLUDE_SEED=0
+USER_MNEMONIC=""
+DERIVATION_PATH="m/44'/501'/0'/0'"
+USE_ENV_MNEMONIC=0
+
+usage() {
+  cat <<'USAGE'
+Usage: sol-from-bash [options] <wordlist> [passphrase]
+
+Options:
+  -q, --quiet          Only emit JSON result
+  --include-seed       Include BIP39 seed in JSON output
+  --mnemonic PHRASE    Use the provided mnemonic phrase
+  --path PATH          Override derivation path (default m/44'/501'/0'/0')
+USAGE
+}
+
+if [[ -n "${MNEMONIC_ENV}" ]]; then
+  USER_MNEMONIC="${MNEMONIC_ENV}"
+  USE_ENV_MNEMONIC=1
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -q|--quiet)
+      QUIET=1
+      shift
+      ;;
+    --include-seed)
+      INCLUDE_SEED=1
+      shift
+      ;;
+    --mnemonic)
+      if (( USE_ENV_MNEMONIC == 1 )); then
+        echo "MNEMONIC environment variable is set; remove --mnemonic" >&2
+        exit 2
+      fi
+      shift
+      USER_MNEMONIC="${1-}"
+      if [[ -z "${USER_MNEMONIC}" ]]; then
+        echo "--mnemonic requires a value" >&2
+        exit 2
+      fi
+      shift
+      ;;
+    --path)
+      shift
+      DERIVATION_PATH="${1-}"
+      if [[ -z "${DERIVATION_PATH}" ]]; then
+        echo "--path requires a value" >&2
+        exit 2
+      fi
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ $# -lt 1 ]]; then
+  usage >&2
+  exit 2
+fi
+
+WLIST="$1"
+shift || true
+PASSPHRASE="${*:-}"
+
+if [[ ! -r "${WLIST}" ]]; then
+  echo "Wordlist '${WLIST}' not readable" >&2
+  exit 1
+fi
+
+bip39_load_wordlist "${WLIST}"
+
+sdebug() {
+  if (( QUIET == 0 )); then
+    echo "$@" >&2
+  fi
+}
+
+ENT_HEX_VALUE=""
+if [[ -n "${ENT_HEX_ENV}" ]]; then
+  if ! ENT_HEX_VALUE="$(bip39_validate_entropy_hex "${ENT_HEX_ENV}")"; then
+    exit 2
+  fi
+fi
+
+if [[ -z "${USER_MNEMONIC}" ]]; then
+  if [[ -z "${ENT_HEX_VALUE}" ]]; then
+    if ! ENT_HEX_VALUE="$(bip39_generate_entropy_hex)"; then
+      exit 1
+    fi
+  fi
+else
+  ENT_HEX_VALUE=""
+fi
+
+if [[ -z "${USER_MNEMONIC}" ]]; then
+  MNEMONIC="$(bip39_build_mnemonic_from_entropy "${ENT_HEX_VALUE}")"
+else
+  if ! MNEMONIC="$(bip39_validate_mnemonic "${USER_MNEMONIC}")"; then
+    exit 2
+  fi
+fi
+
+SEED_HEX="$(${BIP39_HELPER} --mnemonic "${MNEMONIC}" --passphrase "${PASSPHRASE}")"
+if [[ -z "${SEED_HEX}" ]]; then
+  echo "Failed to derive seed" >&2
+  exit 1
+fi
+
+sdebug "Seed: ${SEED_HEX}"
+
+read -r master_key master_chain < <(solana_slip10_master_from_seed "${SEED_HEX}")
+if [[ -z "${master_key}" || -z "${master_chain}" ]]; then
+  echo "Failed to derive master key" >&2
+  exit 1
+fi
+
+mapfile -t PATH_SEGMENTS < <(solana_slip10_parse_path "${DERIVATION_PATH}") || exit 1
+child_key="${master_key}"
+child_chain="${master_chain}"
+if (( ${#PATH_SEGMENTS[@]} > 0 )); then
+  read -r child_key child_chain < <(solana_slip10_derive_path_segments "${child_key}" "${child_chain}" "${PATH_SEGMENTS[@]}") || exit 1
+fi
+
+sdebug "Derived key: ${child_key}"
+sdebug "Chain code: ${child_chain}"
+
+pub_hex="$(ed25519_public_key_from_seed_hex "${child_key}")"
+secret64_hex="$(ed25519_secret_key64_from_seed "${child_key}")"
+if [[ -z "${pub_hex}" || -z "${secret64_hex}" ]]; then
+  echo "Failed to derive Ed25519 keypair" >&2
+  exit 1
+fi
+
+address="$(base58_encode_hex "${pub_hex}")"
+sdebug "Public key: ${pub_hex}"
+sdebug "Address: ${address}"
+
+if (( INCLUDE_SEED )); then
+  printf '{"mnemonic":"%s","path":"%s","privateKey":"%s","publicKey":"%s","secretKey":"%s","chainCode":"%s","address":"%s","seed":"%s"}\n' \
+    "${MNEMONIC}" "${DERIVATION_PATH}" "${child_key}" "${pub_hex}" "${secret64_hex}" "${child_chain}" "${address}" "${SEED_HEX}"
+else
+  printf '{"mnemonic":"%s","path":"%s","privateKey":"%s","publicKey":"%s","secretKey":"%s","chainCode":"%s","address":"%s"}\n' \
+    "${MNEMONIC}" "${DERIVATION_PATH}" "${child_key}" "${pub_hex}" "${secret64_hex}" "${child_chain}" "${address}"
+fi
