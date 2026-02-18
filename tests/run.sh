@@ -8,6 +8,7 @@ source "${TEST_DIR}/load_secrets.sh"
 SCRIPTS=(
   check_deps.sh
   load_secrets_mode.sh
+  tempfile_safety.sh
   bip39_lib.sh
   bip32_lib.sh
   core_flow.sh
