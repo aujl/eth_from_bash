@@ -197,6 +197,24 @@ pbkdf2_hmac_sha512() {
   printf '%s' "${derived:0:$((dk_len_bytes * 2))}"
 }
 
+pbkdf2_hmac_sha512_openssl() {
+  local password_hex=$1
+  local salt_hex=$2
+  local iterations=$3
+
+  command -v openssl >/dev/null 2>&1 || return 1
+
+  openssl kdf \
+    -keylen 64 \
+    -kdfopt digest:sha512 \
+    -kdfopt "hexpass:${password_hex}" \
+    -kdfopt "hexsalt:${salt_hex}" \
+    -kdfopt "iter:${iterations}" \
+    PBKDF2 2>/dev/null \
+    | tr -d '[:space:]:' \
+    | tr 'A-F' 'a-f'
+}
+
 command_hmac_sha512() {
   local key_hex=""
   local data_hex=""
@@ -318,7 +336,9 @@ command_pbkdf2() {
   local salt_hex
   salt_hex=$(ascii_to_hex "${salt}")
   local derived
-  derived=$(pbkdf2_hmac_sha512 "${mnemonic_hex}" "${salt_hex}" "${iterations}")
+  if ! derived="$(pbkdf2_hmac_sha512_openssl "${mnemonic_hex}" "${salt_hex}" "${iterations}")"; then
+    derived="$(pbkdf2_hmac_sha512 "${mnemonic_hex}" "${salt_hex}" "${iterations}")"
+  fi
   printf '%s\n' "${derived}"
 }
 
