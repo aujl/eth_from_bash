@@ -164,10 +164,11 @@ if (( QUIET == 0 )); then
   sdebug "Address: ${address_base58}"
 fi
 
+secret_key_hex="${priv_key_hex}${pub_key_hex}"
 if (( INCLUDE_SEED == 1 )); then
-  printf '{"mnemonic":"%s","path":"%s","privateKey":"%s","publicKey":"%s","address":"%s","seed":"%s"}\n' \
-    "${MNEMONIC}" "${DERIVATION_PATH}" "${priv_key_hex}" "${pub_key_hex}" "${address_base58}" "${SEED_HEX}"
+  printf '{"mnemonic":"%s","path":"%s","privateKey":"%s","publicKey":"%s","secretKey":"%s","chainCode":"%s","address":"%s","seed":"%s"}\n' \
+    "${MNEMONIC}" "${DERIVATION_PATH}" "${priv_key_hex}" "${pub_key_hex}" "${secret_key_hex}" "${master_chain}" "${address_base58}" "${SEED_HEX}"
 else
-  printf '{"mnemonic":"%s","path":"%s","privateKey":"%s","publicKey":"%s","address":"%s"}\n' \
-    "${MNEMONIC}" "${DERIVATION_PATH}" "${priv_key_hex}" "${pub_key_hex}" "${address_base58}"
+  printf '{"mnemonic":"%s","path":"%s","privateKey":"%s","publicKey":"%s","secretKey":"%s","chainCode":"%s","address":"%s"}\n' \
+    "${MNEMONIC}" "${DERIVATION_PATH}" "${priv_key_hex}" "${pub_key_hex}" "${secret_key_hex}" "${master_chain}" "${address_base58}"
 fi

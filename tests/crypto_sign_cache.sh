@@ -8,9 +8,10 @@ source "${TESTS_DIR}/common.sh"
 CRYPTO_SIGN_LIB="${ROOT_DIR}/scripts/crypto_sign.sh"
 
 main() {
-  local trace_file
-  trace_file="$(mktemp -u -t crypto_sign_cache.XXXXXX)"
-  trap '[[ -n "${trace_file:-}" && -e "${trace_file}" ]] && rm -f "${trace_file}"' EXIT
+  local trace_dir trace_file
+  trace_dir="$(mktemp -d -t crypto_sign_cache.XXXXXX)"
+  trace_file="${trace_dir}/trace.log"
+  trap '[[ -n "${trace_dir:-}" && -d "${trace_dir}" ]] && rm -rf "${trace_dir}"' EXIT
 
   local subshell_output
   if ! subshell_output="$(
@@ -24,14 +25,14 @@ main() {
       set --
       : >| "${CRYPTO_SIGN_TRACE_FILE_PATH}"
       hex_value="00ff"
-      dec_tmp="$(mktemp -u -t crypto_sign_cache_dec.XXXXXX)"
-      hex_tmp="$(mktemp -u -t crypto_sign_cache_hex.XXXXXX)"
-      hex_to_dec "${hex_value}" >"${dec_tmp}"
+      dec_tmp="$(mktemp -t crypto_sign_cache_dec.XXXXXX)"
+      hex_tmp="$(mktemp -t crypto_sign_cache_hex.XXXXXX)"
+      hex_to_dec "${hex_value}" >|"${dec_tmp}"
       IFS= read -r dec_value <"${dec_tmp}"
       first_hex_count="$(grep -c '^bc_simple$' "${CRYPTO_SIGN_TRACE_FILE_PATH}" 2>/dev/null || true)"
       hex_to_dec "${hex_value}" >/dev/null
       second_hex_count="$(grep -c '^bc_simple$' "${CRYPTO_SIGN_TRACE_FILE_PATH}" 2>/dev/null || true)"
-      dec_to_hex "${dec_value}" >"${hex_tmp}"
+      dec_to_hex "${dec_value}" >|"${hex_tmp}"
       first_dec_count="$(grep -c '^bc_simple$' "${CRYPTO_SIGN_TRACE_FILE_PATH}" 2>/dev/null || true)"
       dec_to_hex "${dec_value}" >/dev/null
       second_dec_count="$(grep -c '^bc_simple$' "${CRYPTO_SIGN_TRACE_FILE_PATH}" 2>/dev/null || true)"

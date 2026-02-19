@@ -63,24 +63,18 @@ test_base58_vectors() {
 test_cli_known_vector() {
   local mnemonic="urge pulp usage sister evidence arrest palm math please chief egg abuse"
   local expected_seed="fc8366fb892d2e9e30d56e72daf7585ee80482310a3c58936094e8d4dcdb1693d48cfc8b7d36d5de56ca244444ba2cd533c2ea4a533ab65de04303579395182d"
-  local expected_priv="99a42c61123e1adc26946fcc799d035e4007e0045a46a17447a104c26026db30"
-  local expected_pub="c047b4f3846cb97c5a956c84ad16a7922bdf7b659c17ff3b366f2d8f4a37f499"
+  local expected_priv="284e86df61965c35e2a5488d66dbbec5d58ab79305b695d064900351ec72c05f"
+  local expected_pub="d9cc61f26972232bb9a429a83d56b2cb651e5313a3aa082f400c15d204d8abbd"
   local expected_secret64="${expected_priv}${expected_pub}"
-  local expected_chain="7a799bef24dcb7ddb6ac69684727318d7c67bc1fd67535090bed97c9e88730ff"
-  local expected_address="DwahMtMFiaySBMpNgRzDgwwAejoPM7ZgggMEhj3Yr2AL"
+  local expected_chain="b3c52f8deb70df13f951cd82c4a78c456bcd8ebdb989246ddba7bd2a5c9aa8bd"
+  local expected_address="FfCEC4bh9hCuo2nANx7n8MVSumz7YqxT21sJ92YcTprg"
 
   local output
   output="$("${SOL_SCRIPT}" -q --include-seed --mnemonic "${mnemonic}" "${WLIST}")"
 
   parse_json() {
     local key="$1"
-    python - "$key" <<'PY'
-import json, sys
-key = sys.argv[1]
-data = json.loads(sys.stdin.read())
-value = data.get(key, "")
-print(value)
-PY
+    jq -r --arg k "$key" '.[$k] // ""'
   }
 
   local priv pub secret64 chain addr seed

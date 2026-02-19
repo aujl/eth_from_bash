@@ -26,7 +26,7 @@ base58_hex_normalize() {
 
 base58_bc_eval() {
   local expr="$1"
-  bc <<<"${expr}" | tr -d ' \n'
+  bc <<<"${expr}" | tr -d ' \\\n'
 }
 
 base58_encode_hex() {
@@ -48,7 +48,8 @@ base58_encode_hex() {
   local result=""
   local dec="0"
   if [[ -n "${value_hex}" ]]; then
-    dec="$(base58_bc_eval "ibase=16; ${value_hex}")"
+    local value_hex_upper="${value_hex^^}"
+    dec="$(base58_bc_eval "ibase=16; ${value_hex_upper}")"
     if [[ -z "${dec}" ]]; then
       dec="0"
     fi

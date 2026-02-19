@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${SCRIPT_DIR}/crypto_kdf.sh}"
+resolve_path() {
+  local target="$1"
+  local dir base
+  dir="$(cd "$(dirname "${target}")" && pwd -P)"
+  base="$(basename "${target}")"
+  printf '%s/%s\n' "${dir}" "${base}"
+}
+
+SCRIPT_PATH="$(resolve_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
+DEFAULT_KDF_HELPER="${SCRIPT_DIR}/crypto_kdf.sh"
+CRYPTO_KDF_HELPER="${CRYPTO_KDF_HELPER:-${DEFAULT_KDF_HELPER}}"
+CRYPTO_KDF_HELPER="$(resolve_path "${CRYPTO_KDF_HELPER}")"
+
+if [[ "${CRYPTO_KDF_HELPER}" == "${SCRIPT_PATH}" ]]; then
+  CRYPTO_KDF_HELPER="${DEFAULT_KDF_HELPER}"
+fi
 
 usage() {
   cat <<'USAGE'
