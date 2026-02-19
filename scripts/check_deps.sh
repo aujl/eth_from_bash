@@ -2,8 +2,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/crypto/sha2.sh
-source "${SCRIPT_DIR}/lib/crypto/sha2.sh"
+
+# Load the canonical SHA-2 helpers only when they are not already defined in the
+# current shell. This allows test harnesses to inject tampered helpers via
+# BASH_ENV and verify the checker fails closed.
+if ! declare -F sha256_hex_from_stream >/dev/null 2>&1 || ! declare -F sha512_hex_from_stream >/dev/null 2>&1; then
+  # shellcheck source=scripts/lib/crypto/sha2.sh
+  source "${SCRIPT_DIR}/lib/crypto/sha2.sh"
+fi
 
 eth_from_bash::check_result() {
   local binary="$1"

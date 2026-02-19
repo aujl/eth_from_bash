@@ -263,10 +263,20 @@ ed25519_expand_secret_from_seed() {
 
 ed25519_public_key_from_seed_hex() {
   local seed_hex="${1,,}"
-  local scalar
-  local _prefix
-  read -r scalar _prefix < <(ed25519_expand_secret_from_seed "${seed_hex}") || return 1
-  ed25519_public_from_scalar_hex "${scalar}"
+  if [[ ${#seed_hex} -ne 64 ]] || [[ ! ${seed_hex} =~ ^[0-9a-f]{64}$ ]]; then
+    echo "seed must be 32-byte hex" >&2
+    return 1
+  fi
+  command -v node >/dev/null 2>&1 || { echo "node is required for Ed25519 public derivation" >&2; return 1; }
+  SEED_HEX="${seed_hex}" node <<'NODE'
+const crypto = require('crypto');
+const seedHex = (process.env.SEED_HEX || '').trim();
+const seed = Buffer.from(seedHex, 'hex');
+const prefix = Buffer.from('302e020100300506032b657004220420', 'hex');
+const priv = crypto.createPrivateKey({ key: Buffer.concat([prefix, seed]), format: 'der', type: 'pkcs8' });
+const spki = crypto.createPublicKey(priv).export({ format: 'der', type: 'spki' });
+process.stdout.write(spki.subarray(spki.length - 32).toString('hex'));
+NODE
 }
 
 ed25519_secret_key64_from_seed() {
@@ -276,6 +286,14 @@ ed25519_secret_key64_from_seed() {
   printf '%s%s\n' "${seed_hex}" "${pub_hex}"
 }
 
+ed25519_derive_keypair_hex() {
+  local seed_hex="${1,,}"
+  local scalar _prefix pub_hex
+  read -r scalar _prefix < <(ed25519_expand_secret_from_seed "${seed_hex}") || return 1
+  pub_hex="$(ed25519_public_key_from_seed_hex "${seed_hex}")" || return 1
+  printf '%s %s\n' "${scalar}" "${pub_hex}"
+}
+
 export -f ed25519_clamp_scalar_le_hex
 export -f ed25519_scalar_to_point_dec
 export -f ed25519_point_compress
@@ -283,3 +301,4 @@ export -f ed25519_public_from_scalar_hex
 export -f ed25519_expand_secret_from_seed
 export -f ed25519_public_key_from_seed_hex
 export -f ed25519_secret_key64_from_seed
+export -f ed25519_derive_keypair_hex

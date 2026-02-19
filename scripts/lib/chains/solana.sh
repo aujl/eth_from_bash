@@ -10,8 +10,12 @@ readonly SOLANA_SLIP10_SEED_KEY_HEX="656432353531392073656564"
 
 solana_slip10_hmac_sha512() {
   local key_hex="$1" data_hex="$2"
-  local helper="${CRYPTO_KDF_HELPER:-}" 
-  if [[ -z "${helper}" || ! -x "${helper}" ]]; then
+  local helper="${CRYPTO_KDF_HELPER:-}"
+  if [[ -z "${helper}" ]]; then
+    local repo_root="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+    helper="${repo_root}/scripts/crypto_kdf.sh"
+  fi
+  if [[ ! -x "${helper}" ]]; then
     echo "Crypto helper '${helper}' not executable" >&2
     return 1
   fi

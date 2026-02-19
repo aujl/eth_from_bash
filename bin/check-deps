@@ -7,7 +7,12 @@ export REPO_ROOT
 
 # shellcheck source=scripts/lib/common/bootstrap.sh
 source "${REPO_ROOT}/scripts/lib/common/bootstrap.sh"
-eth_from_bash::bootstrap_cli_environment "${REPO_ROOT}"
+# Intentionally avoid bootstrap_cli_environment here because it force-sources
+# the canonical SHA-2 library, which would mask tamper-injection tests that use
+# BASH_ENV overrides. We only need helper path defaults + executable checks.
+eth_from_bash::set_helper_defaults "${REPO_ROOT}"
+eth_from_bash::ensure_helper_executables
+eth_from_bash::require_commands jq bc xxd awk
 
 check_deps_script="${REPO_ROOT}/scripts/check_deps.sh"
 if [[ ! -r "${check_deps_script}" ]]; then
